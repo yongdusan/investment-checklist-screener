@@ -1,0 +1,41 @@
+name: Daily Stock Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 23 * * 0-4"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run daily pipeline
+        env:
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          REPORT_MIN_SCORE: "60"
+          REPORT_TOP_N: "10"
+          NOTION_STATUS: "생성중"
+        run: node ./scripts/run-daily-pipeline.mjs
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-stock-report
+          path: |
+            reports/daily-shortlist.md
+            data/universe.latest.csv
+            data/universe.enriched.csv

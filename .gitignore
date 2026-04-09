@@ -1,0 +1,13 @@
+.DS_Store
+.env
+node_modules/
+
+# Generated outputs
+reports/*.md
+data/universe.latest.csv
+data/universe.enriched.csv
+
+# Keep manually exported KRX CSVs out of git by default
+data/krx-basic.csv
+data/krx-valuation.csv
+data/krx-marketcap.csv

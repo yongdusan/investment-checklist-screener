@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>투자 체크리스트 스크리너</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Meritz-style checklist</p>
+        <h1>좋은 종목보다, 좋은 판단 구조를 먼저 고릅니다.</h1>
+        <p class="lede">
+          메리츠 사례에서 재현 가능한 원칙만 추려서, 여러 종목을 같은 기준으로
+          비교할 수 있게 만든 간단한 스크리너입니다.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="panel panel-principles">
+          <div class="panel-heading">
+            <h2>핵심 체크리스트</h2>
+            <p>각 항목은 0점 또는 가중치 점수로 반영됩니다.</p>
+          </div>
+
+          <div class="principle-list" id="principle-list"></div>
+
+          <div class="note-box">
+            <h3>읽는 법</h3>
+            <p>
+              이 도구는 종목 추천기가 아니라 우선순위 정리 도구입니다. 숫자가
+              높다고 바로 매수 대상은 아니고, 왜 점수가 높게 나왔는지 직접
+              확인해야 합니다.
+            </p>
+          </div>
+        </article>
+
+        <article class="panel panel-controls">
+          <div class="panel-heading">
+            <h2>스크리너</h2>
+            <p>유니버스를 불러와 상위 후보를 자동으로 추리고, 필요하면 직접 수정할 수 있습니다.</p>
+          </div>
+
+          <div class="control-block">
+            <label for="universe-url">유니버스 CSV URL</label>
+            <p class="help">
+              외부에 올려둔 CSV 주소가 있으면 불러와서 바로 점수화합니다. 없으면 아래
+              CSV 입력 내용을 사용합니다.
+            </p>
+            <div class="url-row">
+              <input
+                id="universe-url"
+                type="url"
+                placeholder="https://example.com/universe.csv"
+              />
+              <button id="fetch-universe" class="button-secondary">URL 불러오기</button>
+            </div>
+          </div>
+
+          <div class="control-block">
+            <label for="csv-file">로컬 CSV 파일</label>
+            <p class="help">
+              자동 수집 스크립트가 만든 <code>universe.latest.csv</code> 같은 파일을
+              바로 불러올 수 있습니다.
+            </p>
+            <input id="csv-file" type="file" accept=".csv,text/csv" />
+          </div>
+
+          <div class="control-block">
+            <label for="csv-input">CSV 입력</label>
+            <p class="help">
+              헤더 예시:
+              <code>name,market,sector,marketCap,per,roe,pbr,debtRatio,opMargin,dividendYield,netCash,catalyst,governance,confidence</code>
+            </p>
+            <textarea
+              id="csv-input"
+              spellcheck="false"
+            >name,market,sector,marketCap,per,roe,pbr,debtRatio,opMargin,dividendYield,netCash,catalyst,governance,confidence
+메리츠금융지주,KOSPI,금융,21000000000000,6.2,24.5,1.35,82,28,5.2,true,strong,strong,high
+현금부자산주A,KOSDAQ,산업재,480000000000,5.8,14.2,0.55,38,11,2.1,true,medium,medium,medium
+저PER하지만부진B,KOSPI,소비재,390000000000,4.1,6.8,0.48,145,3,1.4,false,weak,weak,low
+고ROE성장주C,KOSDAQ,IT,1200000000000,11.4,22.1,2.2,52,18,0.8,false,medium,medium,medium</textarea>
+          </div>
+
+          <div class="button-row">
+            <button id="run-screening">점수 계산</button>
+            <button id="load-sample" class="button-secondary">예시 복원</button>
+          </div>
+
+          <div class="control-block threshold-grid">
+            <div>
+              <label for="min-score">최소 점수</label>
+              <input id="min-score" type="range" min="0" max="100" value="55" />
+              <span id="min-score-value">55점</span>
+            </div>
+            <div>
+              <label for="top-n">상위 몇 종목</label>
+              <select id="top-n">
+                <option value="3">3개</option>
+                <option value="5" selected>5개</option>
+                <option value="10">10개</option>
+                <option value="999">전체</option>
+              </select>
+            </div>
+            <div>
+              <label for="must-have-catalyst">재평가 계기 필수</label>
+              <select id="must-have-catalyst">
+                <option value="no">아니오</option>
+                <option value="yes">예</option>
+              </select>
+            </div>
+            <div class="threshold-full">
+              <label for="must-have-confidence">확신도 필터</label>
+              <select id="must-have-confidence">
+                <option value="all">전체</option>
+                <option value="medium">중간 이상</option>
+                <option value="high">높음만</option>
+              </select>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel panel-results">
+        <div class="panel-heading">
+          <h2>결과</h2>
+          <p>상위 후보, 점수, 판정, 통과 이유를 함께 보여줍니다.</p>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="shortlist" class="shortlist"></div>
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
