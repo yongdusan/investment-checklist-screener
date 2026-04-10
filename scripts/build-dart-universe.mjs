@@ -19,6 +19,13 @@ function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
+function normalizeMetricLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replaceAll(/\s+/g, "")
+    .trim();
+}
+
 function csvEscape(value) {
   const text = String(value ?? "");
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -57,8 +64,11 @@ function parseCorpXml(xmlText) {
 }
 
 function pickMetric(items, aliases) {
-  const aliasSet = aliases.map((alias) => alias.toLowerCase());
-  const hit = items.find((item) => aliasSet.includes(String(item.idx_nm || "").toLowerCase()));
+  const aliasSet = aliases.map(normalizeMetricLabel);
+  const hit = items.find((item) => {
+    const label = normalizeMetricLabel(item.idx_nm);
+    return aliasSet.some((alias) => label === alias || label.includes(alias));
+  });
   return hit ? normalizeNumber(hit.idx_val) : "";
 }
 
@@ -134,16 +144,38 @@ async function fetchIndicators(corp) {
     fetchJson(buildUrl("M220000")),
   ]);
 
-  const profitabilityList = Array.isArray(profitability.list) ? profitability.list : [];
-  const stabilityList = Array.isArray(stability.list) ? stability.list : [];
+  const profitabilityStatus = profitability.status || "900";
+  const stabilityStatus = stability.status || "900";
+  const profitabilityList = profitabilityStatus === "000" && Array.isArray(profitability.list)
+    ? profitability.list
+    : [];
+  const stabilityList = stabilityStatus === "000" && Array.isArray(stability.list)
+    ? stability.list
+    : [];
 
-  const roe = pickMetric(profitabilityList, ["ROE", "Return on equity"]);
+  const roe = pickMetric(profitabilityList, [
+    "ROE",
+    "Return on equity",
+    "자기자본이익률",
+    "자기자본순이익률",
+  ]);
   const opMargin = pickMetric(profitabilityList, [
     "영업이익률",
+    "매출액영업이익률",
     "Operating income margin",
     "Operating profit margin",
   ]);
-  const debtRatio = pickMetric(stabilityList, ["부채비율", "Debt ratio"]);
+  const debtRatio = pickMetric(stabilityList, [
+    "부채비율",
+    "Debt ratio",
+    "총부채비율",
+  ]);
+
+  if (!profitabilityList.length && !stabilityList.length) {
+    const profitabilityMessage = `${profitabilityStatus}:${profitability.message || "unknown"}`;
+    const stabilityMessage = `${stabilityStatus}:${stability.message || "unknown"}`;
+    throw new Error(`profitability=${profitabilityMessage}, stability=${stabilityMessage}`);
+  }
 
   return {
     name: corp.corpName,
@@ -197,8 +229,30 @@ async function main() {
   const successful = rows.filter(
     (row) => row && !row.error && (row.roe !== "" || row.debtRatio !== "" || row.opMargin !== ""),
   );
+  const failures = rows.filter((row) => row && row.error);
 
   successful.sort((a, b) => Number(b.roe || 0) - Number(a.roe || 0));
+
+  if (failures.length > 0) {
+    const errorCounts = failures.reduce((acc, row) => {
+      acc[row.error] = (acc[row.error] || 0) + 1;
+      return acc;
+    }, {});
+    const topErrors = Object.entries(errorCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    console.log("수집 실패 요약:");
+    topErrors.forEach(([message, count]) => {
+      console.log(`- ${count}건: ${message}`);
+    });
+  }
+
+  if (successful.length === 0) {
+    console.log(
+      "경고: 재무지표가 있는 종목을 한 건도 만들지 못했습니다. OpenDART 상태 코드와 지표명 매칭을 우선 확인하세요.",
+    );
+  }
 
   const header = [
     "name",
