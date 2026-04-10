@@ -24,14 +24,12 @@
 1. OpenDART 유니버스 생성
 2. KRX CSV가 저장소에 있으면 병합
 3. Markdown 리포트 생성
-4. Notion 데이터베이스에 새 페이지 생성
+4. 생성된 리포트와 CSV를 저장소에 자동 커밋
 
 필요한 GitHub Secrets:
 
 - `OPENDART_API_KEY`
-- `NOTION_API_KEY`
-- `NOTION_DATABASE_ID`
-- 선택값: `REPORT_MIN_SCORE`, `REPORT_TOP_N`, `NOTION_STATUS`
+- 선택값: `REPORT_MIN_SCORE`, `REPORT_TOP_N`
 
 현재 스케줄은 `30 23 * * 0-4` 로 설정되어 있습니다. 이는 한국시간 기준 평일 오전 8시 30분에 해당합니다.
 
@@ -103,36 +101,15 @@ node ./scripts/generate-daily-report.mjs \
 
 CSV에 `market`, `sector`, `marketCap`, `per`, `pbr`가 들어 있을수록 리포트 품질이 좋아집니다.
 
-## Notion 업로드
-
-생성된 Markdown 리포트를 Notion 데이터베이스에 새 페이지로 올릴 수 있습니다.
-
-```bash
-cd /Users/ahn-yongsung/Project/investment-checklist-screener
-NOTION_API_KEY=발급받은키 \
-NOTION_DATABASE_ID=33d0ad6fdb0d80af9968e069afe6ca1b \
-node ./scripts/publish-to-notion.mjs \
-  ./reports/daily-shortlist.md \
-  2026-04-10 \
-  60 \
-  10 \
-  ./data/universe.enriched.csv \
-  생성중
-```
-
-리포트 본문은 제목, 요약, 점수표, 상세 후보 섹션을 Notion 블록으로 변환해 업로드합니다.
-
 ## 서버 파이프라인 한 번에 실행
 
 ```bash
 cd /Users/ahn-yongsung/Project/investment-checklist-screener
 OPENDART_API_KEY=발급받은키 \
-NOTION_API_KEY=발급받은키 \
-NOTION_DATABASE_ID=33d0ad6fdb0d80af9968e069afe6ca1b \
 node ./scripts/run-daily-pipeline.mjs
 ```
 
-이 스크립트는 DART 수집, KRX 병합, 리포트 생성, Notion 업로드를 순서대로 실행합니다.
+이 스크립트는 DART 수집, KRX 병합, 리포트 생성을 순서대로 실행합니다.
 
 ## 추천 사용 흐름
 

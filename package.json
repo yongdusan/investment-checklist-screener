@@ -6,7 +6,6 @@
     "build:dart": "node ./scripts/build-dart-universe.mjs",
     "merge:krx": "node ./scripts/merge-krx-exports.mjs",
     "report": "node ./scripts/generate-daily-report.mjs",
-    "publish:notion": "node ./scripts/publish-to-notion.mjs",
     "run:daily": "node ./scripts/run-daily-pipeline.mjs"
   }
 }

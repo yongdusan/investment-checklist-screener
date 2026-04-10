@@ -6,11 +6,10 @@ import { resolve } from "node:path";
 const year = process.env.REPORT_YEAR || new Date().getFullYear() - 1;
 const minScore = process.env.REPORT_MIN_SCORE || "60";
 const topN = process.env.REPORT_TOP_N || "10";
-const notionStatus = process.env.NOTION_STATUS || "생성중";
 
 const dartOutput = resolve("./data/universe.latest.csv");
 const enrichedOutput = resolve("./data/universe.enriched.csv");
-const reportOutput = resolve("./reports/daily-shortlist.md");
+const reportOutput = resolve(`./reports/${getSeoulDate()}-daily-shortlist.md`);
 
 function getSeoulDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -58,15 +57,6 @@ async function main() {
     reportOutput,
     minScore,
     topN,
-  ]);
-
-  runNode("./scripts/publish-to-notion.mjs", [
-    reportOutput,
-    getSeoulDate(),
-    minScore,
-    topN,
-    reportInput,
-    notionStatus,
   ]);
 }
 

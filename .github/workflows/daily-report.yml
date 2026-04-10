@@ -9,11 +9,13 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -23,12 +25,18 @@ jobs:
       - name: Run daily pipeline
         env:
           OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           REPORT_MIN_SCORE: "60"
           REPORT_TOP_N: "10"
-          NOTION_STATUS: "생성중"
         run: node ./scripts/run-daily-pipeline.mjs
+
+      - name: Commit generated reports
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/*.md data/universe.latest.csv data/universe.enriched.csv || true
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update daily stock report"
+          git push
 
       - name: Upload report artifact
         if: always()
@@ -36,6 +44,6 @@ jobs:
         with:
           name: daily-stock-report
           path: |
-            reports/daily-shortlist.md
+            reports/*.md
             data/universe.latest.csv
             data/universe.enriched.csv
