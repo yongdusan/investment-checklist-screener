@@ -33,7 +33,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports/*.md data/universe.latest.csv data/universe.enriched.csv || true
+          git add -f reports/*.md data/universe.latest.csv data/universe.enriched.csv || true
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "Update daily stock report"
           git push
