@@ -384,6 +384,43 @@ button:hover {
   line-height: 1.6;
 }
 
+.breakdown-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.breakdown-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.breakdown-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.breakdown-item {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 249, 239, 0.92);
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.92rem;
+}
+
+.breakdown-item p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .empty-state {
   padding: 24px;
   border-radius: 18px;
@@ -395,7 +432,8 @@ button:hover {
   .grid,
   .threshold-grid,
   .metrics-grid,
-  .shortlist {
+  .shortlist,
+  .breakdown-list {
     grid-template-columns: 1fr;
   }
 

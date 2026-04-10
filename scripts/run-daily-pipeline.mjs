@@ -2,23 +2,21 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import {
+  REPORT_CONFIG,
+  getReportMinScore,
+  getReportTopN,
+  getReportYear,
+  getSeoulDate,
+} from "../config/reporting.mjs";
 
-const year = process.env.REPORT_YEAR || new Date().getFullYear() - 1;
-const minScore = process.env.REPORT_MIN_SCORE || "60";
-const topN = process.env.REPORT_TOP_N || "10";
+const year = getReportYear();
+const minScore = String(getReportMinScore());
+const topN = String(getReportTopN());
 
-const dartOutput = resolve("./data/universe.latest.csv");
-const enrichedOutput = resolve("./data/universe.enriched.csv");
-const reportOutput = resolve(`./reports/${getSeoulDate()}-daily-shortlist.md`);
-
-function getSeoulDate() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+const dartOutput = resolve(REPORT_CONFIG.latestUniversePath);
+const enrichedOutput = resolve(REPORT_CONFIG.enrichedUniversePath);
+const reportOutput = resolve(`${REPORT_CONFIG.reportDir}/${getSeoulDate()}-daily-shortlist.md`);
 
 function exists(path) {
   return access(path, constants.F_OK)
@@ -58,6 +56,10 @@ async function main() {
     minScore,
     topN,
   ]);
+
+  console.log(
+    `리포트 설정: 기준연도 ${year}, 최소점수 ${minScore}, 상위 후보 ${topN}개`,
+  );
 }
 
 main().catch((error) => {

@@ -8,6 +8,7 @@
 - `저평가`, `수익성`, `재평가 계기`, `재무 안정성`, `설명의 단순성`, `확신도`를 점수화합니다.
 - 점수가 높은 순으로 후보를 정렬하고, 상위 몇 개 종목만 바로 보여줍니다.
 - CSV URL이 있으면 외부 유니버스를 바로 불러올 수 있습니다.
+- 항목별 점수 breakdown과 리포트 히스토리 인덱스를 함께 만듭니다.
 
 ## 실행 방법
 
@@ -24,12 +25,20 @@
 1. OpenDART 유니버스 생성
 2. KRX CSV가 저장소에 있으면 병합
 3. Markdown 리포트 생성
-4. 생성된 리포트와 CSV를 저장소에 자동 커밋
+4. `reports/index.md` 히스토리 갱신
+5. 생성된 리포트와 CSV를 저장소에 자동 커밋
 
 필요한 GitHub Secrets:
 
 - `OPENDART_API_KEY`
-- 선택값: `REPORT_MIN_SCORE`, `REPORT_TOP_N`
+
+기본 설정은 [reporting.mjs](/Users/ahn-yongsung/Project/investment-checklist-screener/config/reporting.mjs) 에서 관리합니다.
+
+- 기본 최소 점수: `60`
+- 기본 상위 후보 수: `10`
+- 기본 기준연도: 현재 연도 - 1
+
+환경변수 `REPORT_MIN_SCORE`, `REPORT_TOP_N`, `REPORT_YEAR` 를 주면 일시적으로 덮어쓸 수 있습니다.
 
 현재 스케줄은 `30 23 * * 0-4` 로 설정되어 있습니다. 이는 한국시간 기준 평일 오전 8시 30분에 해당합니다.
 
@@ -100,6 +109,13 @@ node ./scripts/generate-daily-report.mjs \
 - 네 번째 인자: 상위 후보 수
 
 CSV에 `market`, `sector`, `marketCap`, `per`, `pbr`가 들어 있을수록 리포트 품질이 좋아집니다.
+
+리포트에는 다음이 함께 들어갑니다.
+
+- 점수표
+- 종목별 항목 점수 breakdown
+- 후보가 0개일 때의 보류 사유
+- `reports/index.md` 히스토리 목록
 
 ## 서버 파이프라인 한 번에 실행
 

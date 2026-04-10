@@ -25,8 +25,6 @@ jobs:
       - name: Run daily pipeline
         env:
           OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
-          REPORT_MIN_SCORE: "60"
-          REPORT_TOP_N: "10"
         run: node ./scripts/run-daily-pipeline.mjs
 
       - name: Commit generated reports
