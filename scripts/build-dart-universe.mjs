@@ -98,7 +98,20 @@ async function fetchCorpUniverse() {
 
     const buffer = Buffer.from(await response.arrayBuffer());
     await writeFile(zipPath, buffer);
-    const xmlText = execFileSync("unzip", ["-p", zipPath], { encoding: "utf8" });
+    let xmlText = "";
+
+    try {
+      xmlText = execFileSync("unzip", ["-p", zipPath], { encoding: "utf8" });
+    } catch (error) {
+      // GitHub Actions can occasionally return a non-zero exit code from unzip
+      // even when the XML payload is present on stdout. Reuse stdout if available.
+      if (typeof error?.stdout === "string" && error.stdout.includes("<result>")) {
+        xmlText = error.stdout;
+      } else {
+        throw error;
+      }
+    }
+
     return parseCorpXml(xmlText);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
