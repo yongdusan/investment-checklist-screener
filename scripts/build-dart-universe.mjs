@@ -59,9 +59,48 @@ function parseCorpXml(xmlText) {
         corpCode: get("corp_code"),
         corpName: get("corp_name"),
         stockCode: get("stock_code"),
+        corpCls: get("corp_cls"),
       };
     })
     .filter((item) => item.stockCode);
+}
+
+function looksLikeOperatingCompany(corp) {
+  const name = String(corp.corpName || "");
+
+  if (!["Y", "K"].includes(corp.corpCls)) {
+    return false;
+  }
+
+  const excludedPatterns = [
+    /스팩/u,
+    /기업인수목적/u,
+    /리츠/u,
+    /부동산투자회사/u,
+    /투자회사/u,
+    /유동화/u,
+    /신탁/u,
+    /위탁관리/u,
+    /펀드/u,
+  ];
+
+  return !excludedPatterns.some((pattern) => pattern.test(name));
+}
+
+function sampleUniverse(universe, limit) {
+  if (!limit || universe.length <= limit) {
+    return universe;
+  }
+
+  const preferred = universe.filter(looksLikeOperatingCompany);
+  const fallback = universe.filter((corp) => !looksLikeOperatingCompany(corp));
+  const selected = preferred.slice(0, limit);
+
+  if (selected.length < limit) {
+    selected.push(...fallback.slice(0, limit - selected.length));
+  }
+
+  return selected;
 }
 
 function pickMetric(items, aliases) {
@@ -279,7 +318,10 @@ async function main() {
     }`,
   );
   const universe = await fetchCorpUniverse();
-  const selected = LIMIT ? universe.slice(0, LIMIT) : universe;
+  const selected = LIMIT ? sampleUniverse(universe, LIMIT) : universe;
+  console.log(
+    `실제 조회 대상: ${selected.length}개 (${selected.filter(looksLikeOperatingCompany).length}개 운영회사 우선)`,
+  );
   const rows = await mapWithConcurrency(selected, fetchIndicators);
   const successful = rows.filter(
     (row) => row && !row.error && (row.roe !== "" || row.debtRatio !== "" || row.opMargin !== ""),
@@ -304,8 +346,8 @@ async function main() {
   }
 
   if (successful.length === 0) {
-    console.log(
-      "경고: 재무지표가 있는 종목을 한 건도 만들지 못했습니다. OpenDART 상태 코드와 지표명 매칭을 우선 확인하세요.",
+    throw new Error(
+      "재무지표가 있는 종목을 한 건도 만들지 못했습니다. 표본 선정과 OpenDART 엔드포인트를 다시 확인하세요.",
     );
   }
 
