@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readKrxCsv } from "../lib/krx-csv.mjs";
 
 const [dartPathArg, basicPathArg, valuationPathArg, marketCapPathArg, outputPathArg] =
   process.argv.slice(2);
@@ -130,9 +131,9 @@ function inferConfidence(existing, roe, opMargin, marketCap) {
 async function main() {
   const [dartText, basicText, valuationText, marketCapText] = await Promise.all([
     readFile(dartPath, "utf8"),
-    readFile(basicPath, "utf8"),
-    readFile(valuationPath, "utf8"),
-    readFile(marketCapPath, "utf8"),
+    readKrxCsv(basicPath),
+    readKrxCsv(valuationPath),
+    readKrxCsv(marketCapPath),
   ]);
 
   const dartRows = parseCsv(dartText);

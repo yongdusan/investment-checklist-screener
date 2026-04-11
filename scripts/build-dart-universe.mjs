@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { readKrxCsv } from "../lib/krx-csv.mjs";
 
 const API_KEY = process.env.OPENDART_API_KEY || process.env.DART_API_KEY;
 const YEAR = Number(process.argv[2] || new Date().getFullYear() - 1);
@@ -136,34 +137,33 @@ function parseCorpXml(xmlText) {
 }
 
 async function loadKrxSelection() {
-  let csvText;
-
   try {
-    csvText = await readFile(KRX_BASIC_PATH, "utf8");
+    const csvText = await readKrxCsv(KRX_BASIC_PATH);
+    const rows = parseCsv(csvText);
+    const selected = rows
+      .map((row) => {
+        const stockCode = normalizeCode(
+          row["종목코드"] || row["단축코드"] || row["표준코드"] || row["종목 코드"],
+        );
+        const market =
+          row["시장구분"] || row["시장"] || row["소속시장"] || row["시장 구분"] || "";
+        const name = row["종목명"] || row["한글 종목명"] || row["회사명"] || "";
+        return { stockCode, market, name };
+      })
+      .filter(
+        (row) => row.stockCode && ["KOSPI", "KOSDAQ"].some((market) => String(row.market).toUpperCase().startsWith(market)),
+      );
+
+    if (!selected.length) {
+      throw new Error(`KRX 기본정보 CSV에서 KOSPI/KOSDAQ 종목을 찾지 못했습니다: ${KRX_BASIC_PATH}`);
+    }
+
+    return LIMIT ? selected.slice(0, LIMIT) : selected;
   } catch (error) {
     throw new Error(
-      `KRX 기본정보 CSV가 필요합니다: ${KRX_BASIC_PATH}. Refresh Stock Universe 실행 전 KRX basic CSV를 준비해 주세요.`,
+      `KRX 기본정보 CSV 처리 실패: ${error.message}`,
     );
   }
-
-  const rows = parseCsv(csvText);
-  const selected = rows
-    .map((row) => {
-      const stockCode = normalizeCode(
-        row["종목코드"] || row["단축코드"] || row["표준코드"] || row["종목 코드"],
-      );
-      const market =
-        row["시장구분"] || row["시장"] || row["소속시장"] || row["시장 구분"] || "";
-      const name = row["종목명"] || row["한글 종목명"] || row["회사명"] || "";
-      return { stockCode, market, name };
-    })
-    .filter((row) => row.stockCode && ["KOSPI", "KOSDAQ"].includes(String(row.market).toUpperCase()));
-
-  if (!selected.length) {
-    throw new Error(`KRX 기본정보 CSV에서 KOSPI/KOSDAQ 종목을 찾지 못했습니다: ${KRX_BASIC_PATH}`);
-  }
-
-  return LIMIT ? selected.slice(0, LIMIT) : selected;
 }
 
 function pickMetric(items, aliases) {
