@@ -7,8 +7,9 @@ const API_KEY = process.env.OPENDART_API_KEY || process.env.DART_API_KEY;
 const YEAR = Number(process.argv[2] || new Date().getFullYear() - 1);
 const LIMIT = process.argv[3] ? Number(process.argv[3]) : null;
 const OUTPUT = resolve(process.argv[4] || "./data/universe.latest.csv");
-const REPORT_CODE = "11011";
+const REPORT_CODES = ["11011", "11014", "11012", "11013"];
 const CONCURRENCY = 4;
+const FETCH_RETRIES = 2;
 
 if (!API_KEY) {
   console.error("OPENDART_API_KEY 또는 DART_API_KEY 환경변수가 필요합니다.");
@@ -86,12 +87,25 @@ function inferConfidence(roe, opMargin, debtRatio) {
   return "";
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+async function fetchJson(url, retries = FETCH_RETRIES) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await sleep(250 * (attempt + 1));
+      }
+    }
   }
-  return response.json();
+
+  throw lastError;
 }
 
 async function fetchCorpUniverse() {
@@ -129,70 +143,94 @@ async function fetchCorpUniverse() {
 }
 
 async function fetchIndicators(corp) {
-  const buildUrl = (idxClCode) => {
+  const buildUrl = (idxClCode, year, reportCode) => {
     const url = new URL("https://opendart.fss.or.kr/api/fnlttSinglIndx.json");
     url.searchParams.set("crtfc_key", API_KEY);
     url.searchParams.set("corp_code", corp.corpCode);
-    url.searchParams.set("bsns_year", String(YEAR));
-    url.searchParams.set("reprt_code", REPORT_CODE);
+    url.searchParams.set("bsns_year", String(year));
+    url.searchParams.set("reprt_code", reportCode);
     url.searchParams.set("idx_cl_code", idxClCode);
     return url;
   };
 
-  const [profitability, stability] = await Promise.all([
-    fetchJson(buildUrl("M210000")),
-    fetchJson(buildUrl("M220000")),
-  ]);
+  const candidateYears = [YEAR, YEAR - 1];
+  const attempts = [];
 
-  const profitabilityStatus = profitability.status || "900";
-  const stabilityStatus = stability.status || "900";
-  const profitabilityList = profitabilityStatus === "000" && Array.isArray(profitability.list)
-    ? profitability.list
-    : [];
-  const stabilityList = stabilityStatus === "000" && Array.isArray(stability.list)
-    ? stability.list
-    : [];
+  for (const year of candidateYears) {
+    for (const reportCode of REPORT_CODES) {
+      let profitability;
+      let stability;
 
-  const roe = pickMetric(profitabilityList, [
-    "ROE",
-    "Return on equity",
-    "자기자본이익률",
-    "자기자본순이익률",
-  ]);
-  const opMargin = pickMetric(profitabilityList, [
-    "영업이익률",
-    "매출액영업이익률",
-    "Operating income margin",
-    "Operating profit margin",
-  ]);
-  const debtRatio = pickMetric(stabilityList, [
-    "부채비율",
-    "Debt ratio",
-    "총부채비율",
-  ]);
+      try {
+        [profitability, stability] = await Promise.all([
+          fetchJson(buildUrl("M210000", year, reportCode)),
+          fetchJson(buildUrl("M220000", year, reportCode)),
+        ]);
+      } catch (error) {
+        attempts.push(`${year}/${reportCode}:fetch failed`);
+        continue;
+      }
 
-  if (!profitabilityList.length && !stabilityList.length) {
-    const profitabilityMessage = `${profitabilityStatus}:${profitability.message || "unknown"}`;
-    const stabilityMessage = `${stabilityStatus}:${stability.message || "unknown"}`;
-    throw new Error(`profitability=${profitabilityMessage}, stability=${stabilityMessage}`);
+      const profitabilityStatus = profitability.status || "900";
+      const stabilityStatus = stability.status || "900";
+      const profitabilityList =
+        profitabilityStatus === "000" && Array.isArray(profitability.list)
+          ? profitability.list
+          : [];
+      const stabilityList =
+        stabilityStatus === "000" && Array.isArray(stability.list) ? stability.list : [];
+
+      attempts.push(
+        `${year}/${reportCode}:profitability=${profitabilityStatus},stability=${stabilityStatus}`,
+      );
+
+      const roe = pickMetric(profitabilityList, [
+        "ROE",
+        "Return on equity",
+        "자기자본이익률",
+        "자기자본순이익률",
+      ]);
+      const opMargin = pickMetric(profitabilityList, [
+        "영업이익률",
+        "매출액영업이익률",
+        "Operating income margin",
+        "Operating profit margin",
+      ]);
+      const debtRatio = pickMetric(stabilityList, [
+        "부채비율",
+        "Debt ratio",
+        "총부채비율",
+      ]);
+
+      if (!profitabilityList.length && !stabilityList.length) {
+        continue;
+      }
+
+      if (roe === "" && opMargin === "" && debtRatio === "") {
+        attempts.push(`${year}/${reportCode}:metric match missed`);
+        continue;
+      }
+
+      return {
+        name: corp.corpName,
+        stockCode: corp.stockCode,
+        corpCode: corp.corpCode,
+        sector: "",
+        per: "",
+        roe,
+        pbr: "",
+        debtRatio,
+        opMargin,
+        netCash: "",
+        catalyst: inferCatalyst(Number(roe || 0), debtRatio),
+        governance: "",
+        confidence: inferConfidence(Number(roe || 0), Number(opMargin || 0), debtRatio),
+        source: `opendart:${year}:${reportCode}`,
+      };
+    }
   }
 
-  return {
-    name: corp.corpName,
-    stockCode: corp.stockCode,
-    corpCode: corp.corpCode,
-    sector: "",
-    per: "",
-    roe,
-    pbr: "",
-    debtRatio,
-    opMargin,
-    netCash: "",
-    catalyst: inferCatalyst(Number(roe || 0), debtRatio),
-    governance: "",
-    confidence: inferConfidence(Number(roe || 0), Number(opMargin || 0), debtRatio),
-    source: "opendart",
-  };
+  throw new Error(attempts.slice(-4).join(" | "));
 }
 
 async function mapWithConcurrency(items, worker) {
