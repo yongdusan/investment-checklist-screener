@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -7,6 +7,7 @@ const API_KEY = process.env.OPENDART_API_KEY || process.env.DART_API_KEY;
 const YEAR = Number(process.argv[2] || new Date().getFullYear() - 1);
 const LIMIT = process.argv[3] ? Number(process.argv[3]) : null;
 const OUTPUT = resolve(process.argv[4] || "./data/universe.latest.csv");
+const KRX_BASIC_PATH = resolve(process.env.KRX_BASIC_PATH || "./data/krx-basic.csv");
 const REPORT_CODES = ["11011", "11014", "11012", "11013"];
 const CONCURRENCY = 4;
 const FETCH_RETRIES = 2;
@@ -51,6 +52,70 @@ function toNumber(value) {
   return normalized === "" ? null : Number(normalized);
 }
 
+function normalizeCode(value) {
+  return String(value ?? "")
+    .replace(/[^\d]/g, "")
+    .padStart(6, "0")
+    .slice(-6);
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let current = "";
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !insideQuotes) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !insideQuotes) {
+      if (char === "\r" && next === "\n") {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((cell) => cell !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some((cell) => cell !== "")) {
+    rows.push(row);
+  }
+
+  const [headers, ...dataRows] = rows;
+  return dataRows.map((cells) => {
+    const obj = {};
+    headers.forEach((header, index) => {
+      obj[String(header).replace(/^\uFEFF/, "").trim()] = (cells[index] ?? "").trim();
+    });
+    return obj;
+  });
+}
+
 function parseCorpXml(xmlText) {
   const rows = [...xmlText.matchAll(/<list>([\s\S]*?)<\/list>/g)];
   return rows
@@ -70,42 +135,35 @@ function parseCorpXml(xmlText) {
     .filter((item) => item.stockCode);
 }
 
-function looksLikeOperatingCompany(corp) {
-  const name = String(corp.corpName || "");
+async function loadKrxSelection() {
+  let csvText;
 
-  if (!["Y", "K"].includes(corp.corpCls)) {
-    return false;
+  try {
+    csvText = await readFile(KRX_BASIC_PATH, "utf8");
+  } catch (error) {
+    throw new Error(
+      `KRX 기본정보 CSV가 필요합니다: ${KRX_BASIC_PATH}. Refresh Stock Universe 실행 전 KRX basic CSV를 준비해 주세요.`,
+    );
   }
 
-  const excludedPatterns = [
-    /스팩/u,
-    /기업인수목적/u,
-    /리츠/u,
-    /부동산투자회사/u,
-    /투자회사/u,
-    /유동화/u,
-    /신탁/u,
-    /위탁관리/u,
-    /펀드/u,
-  ];
+  const rows = parseCsv(csvText);
+  const selected = rows
+    .map((row) => {
+      const stockCode = normalizeCode(
+        row["종목코드"] || row["단축코드"] || row["표준코드"] || row["종목 코드"],
+      );
+      const market =
+        row["시장구분"] || row["시장"] || row["소속시장"] || row["시장 구분"] || "";
+      const name = row["종목명"] || row["한글 종목명"] || row["회사명"] || "";
+      return { stockCode, market, name };
+    })
+    .filter((row) => row.stockCode && ["KOSPI", "KOSDAQ"].includes(String(row.market).toUpperCase()));
 
-  return !excludedPatterns.some((pattern) => pattern.test(name));
-}
-
-function sampleUniverse(universe, limit) {
-  if (!limit || universe.length <= limit) {
-    return universe;
+  if (!selected.length) {
+    throw new Error(`KRX 기본정보 CSV에서 KOSPI/KOSDAQ 종목을 찾지 못했습니다: ${KRX_BASIC_PATH}`);
   }
 
-  const preferred = universe.filter(looksLikeOperatingCompany);
-  const fallback = universe.filter((corp) => !looksLikeOperatingCompany(corp));
-  const selected = preferred.slice(0, limit);
-
-  if (selected.length < limit) {
-    selected.push(...fallback.slice(0, limit - selected.length));
-  }
-
-  return selected;
+  return LIMIT ? selected.slice(0, LIMIT) : selected;
 }
 
 function pickMetric(items, aliases) {
@@ -366,10 +424,19 @@ async function main() {
     }`,
   );
   const universe = await fetchCorpUniverse();
-  const selected = LIMIT ? sampleUniverse(universe, LIMIT) : universe;
+  const krxSelection = await loadKrxSelection();
+  const corpByCode = new Map(universe.map((corp) => [normalizeCode(corp.stockCode), corp]));
+  const selected = krxSelection
+    .map((row) => corpByCode.get(row.stockCode))
+    .filter(Boolean);
+
   console.log(
-    `실제 조회 대상: ${selected.length}개 (${selected.filter(looksLikeOperatingCompany).length}개 운영회사 우선)`,
+    `실제 조회 대상: ${selected.length}개 (KRX basic CSV 기준)`,
   );
+
+  if (!selected.length) {
+    throw new Error("KRX 기본정보 CSV와 OpenDART 회사코드 매핑 결과가 0건입니다.");
+  }
   const rows = await mapWithConcurrency(selected, fetchIndicators);
   const successful = rows.filter(
     (row) => row && !row.error && (row.roe !== "" || row.debtRatio !== "" || row.opMargin !== ""),

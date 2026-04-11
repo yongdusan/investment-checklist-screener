@@ -30,8 +30,9 @@
 
 `Refresh Stock Universe` 동작 순서:
 
-1. OpenDART 유니버스 생성
-2. KRX CSV가 저장소에 있으면 병합
+1. KRX 기본정보 CSV로 수집 대상 종목을 결정
+2. OpenDART 유니버스 생성
+3. KRX CSV가 저장소에 있으면 병합
 3. Markdown 리포트 생성
 4. `reports/index.md` 히스토리 갱신
 5. 생성된 리포트와 CSV를 저장소에 자동 커밋
@@ -49,6 +50,11 @@
 환경변수 `REPORT_MIN_SCORE`, `REPORT_TOP_N`, `REPORT_YEAR`, `REPORT_LIMIT` 를 주면 일시적으로 덮어쓸 수 있습니다.
 
 기본 `REPORT_LIMIT` 은 `100`입니다. 전체 상장사를 한 번에 조회하면 OpenDART 호출 수가 과도해져 워크플로가 오래 걸릴 수 있어서, MVP 단계에서는 제한된 유니버스를 먼저 안정적으로 갱신하는 구조를 권장합니다.
+
+중요:
+- `Refresh Stock Universe`는 이제 `data/krx-basic.csv`를 필수 입력으로 사용합니다.
+- 즉 KRX 기본정보 CSV가 저장소에 없으면 refresh 워크플로는 명확히 실패합니다.
+- 이유는 OpenDART `corpCode.xml` 앞부분만으로 표본을 고르면 스팩, 리츠, 특수목적 법인이 과도하게 섞여 실질 유니버스를 만들기 어려웠기 때문입니다.
 
 현재 스케줄은 `30 23 * * 0-4` 로 설정되어 있습니다. 이는 한국시간 기준 평일 오전 8시 30분에 해당합니다.
 
@@ -135,7 +141,7 @@ OPENDART_API_KEY=발급받은키 \
 node ./scripts/run-daily-pipeline.mjs
 ```
 
-이 스크립트는 DART 수집, KRX 병합, 리포트 생성을 순서대로 실행합니다. 환경변수 `REPORT_LIMIT` 이 없으면 기본 100개 종목만 대상으로 삼습니다.
+이 스크립트는 `KRX 기본정보 CSV 기준 유니버스 선정 -> DART 수집 -> KRX 병합 -> 리포트 생성` 순서로 실행합니다. 환경변수 `REPORT_LIMIT` 이 없으면 기본 100개 종목만 대상으로 삼습니다.
 
 이미 있는 CSV로 리포트만 다시 만들고 싶다면:
 
