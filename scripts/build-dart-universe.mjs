@@ -125,18 +125,35 @@ async function fetchCorpUniverse() {
     let xmlText = "";
 
     try {
-      xmlText = execFileSync("unzip", ["-p", zipPath], { encoding: "utf8" });
+      xmlText = execFileSync("unzip", ["-p", zipPath], {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      });
     } catch (error) {
       // GitHub Actions can occasionally return a non-zero exit code from unzip
-      // even when the XML payload is present on stdout. Reuse stdout if available.
-      if (typeof error?.stdout === "string" && error.stdout.includes("<result>")) {
+      // even when the XML payload is present on stdout. Reuse stdout only when
+      // the payload looks complete enough to parse as a full corp universe.
+      if (
+        typeof error?.stdout === "string" &&
+        error.stdout.includes("<result>") &&
+        error.stdout.includes("</result>")
+      ) {
         xmlText = error.stdout;
       } else {
         throw error;
       }
     }
 
-    return parseCorpXml(xmlText);
+    const parsed = parseCorpXml(xmlText);
+    console.log(`회사코드 유니버스 로드 완료: ${parsed.length}개 상장사`);
+
+    if (parsed.length < 1000) {
+      throw new Error(
+        `corp universe looks truncated: expected many listed companies, got ${parsed.length}`,
+      );
+    }
+
+    return parsed;
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
