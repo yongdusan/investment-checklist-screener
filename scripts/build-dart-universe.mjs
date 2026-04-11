@@ -46,6 +46,11 @@ function normalizeNumber(value) {
   return Number.isFinite(num) ? num : "";
 }
 
+function toNumber(value) {
+  const normalized = normalizeNumber(value);
+  return normalized === "" ? null : Number(normalized);
+}
+
 function parseCorpXml(xmlText) {
   const rows = [...xmlText.matchAll(/<list>([\s\S]*?)<\/list>/g)];
   return rows
@@ -110,6 +115,78 @@ function pickMetric(items, aliases) {
     return aliasSet.some((alias) => label === alias || label.includes(alias));
   });
   return hit ? normalizeNumber(hit.idx_val) : "";
+}
+
+function normalizeAccountName(value) {
+  return String(value || "")
+    .replaceAll(/\s+/g, "")
+    .replaceAll("(", "")
+    .replaceAll(")", "")
+    .trim();
+}
+
+function pickAccountAmount(items, sjDiv, aliases, field = "thstrm_amount") {
+  const normalizedAliases = aliases.map(normalizeAccountName);
+  const sameStatement = items.filter((item) => item.sj_div === sjDiv);
+  const sorted = [...sameStatement].sort((a, b) => {
+    const rank = (fsDiv) => (fsDiv === "CFS" ? 0 : fsDiv === "OFS" ? 1 : 2);
+    return rank(a.fs_div) - rank(b.fs_div);
+  });
+
+  const matched = sorted.find((item) => {
+    const accountName = normalizeAccountName(item.account_nm);
+    return normalizedAliases.some(
+      (alias) => accountName === alias || accountName.includes(alias),
+    );
+  });
+
+  if (!matched) {
+    return null;
+  }
+
+  return toNumber(matched[field]) ?? toNumber(matched.thstrm_amount);
+}
+
+function computeIndicators(accountList) {
+  const equity = pickAccountAmount(accountList, "BS", ["자본총계", "자본"]);
+  const previousEquity = pickAccountAmount(accountList, "BS", ["자본총계", "자본"], "frmtrm_amount");
+  const liabilities = pickAccountAmount(accountList, "BS", ["부채총계", "부채"]);
+  const revenue =
+    pickAccountAmount(accountList, "IS", ["매출액"], "thstrm_add_amount") ??
+    pickAccountAmount(accountList, "IS", ["영업수익"], "thstrm_add_amount");
+  const operatingIncome = pickAccountAmount(
+    accountList,
+    "IS",
+    ["영업이익", "영업이익손실"],
+    "thstrm_add_amount",
+  );
+  const netIncome = pickAccountAmount(
+    accountList,
+    "IS",
+    ["당기순이익", "당기순이익손실", "분기순이익", "반기순이익"],
+    "thstrm_add_amount",
+  );
+
+  const averageEquity =
+    equity !== null && previousEquity !== null ? (equity + previousEquity) / 2 : equity;
+  const roe =
+    netIncome !== null && averageEquity && averageEquity !== 0
+      ? ((netIncome / averageEquity) * 100).toFixed(2)
+      : "";
+  const opMargin =
+    operatingIncome !== null && revenue && revenue !== 0
+      ? ((operatingIncome / revenue) * 100).toFixed(2)
+      : "";
+  const debtRatio =
+    liabilities !== null && equity && equity !== 0
+      ? ((liabilities / equity) * 100).toFixed(2)
+      : "";
+
+  return {
+    roe: normalizeNumber(roe),
+    opMargin: normalizeNumber(opMargin),
+    debtRatio: normalizeNumber(debtRatio),
+  };
 }
 
 function inferCatalyst(roe, debtRatio) {
@@ -199,13 +276,12 @@ async function fetchCorpUniverse() {
 }
 
 async function fetchIndicators(corp) {
-  const buildUrl = (idxClCode, year, reportCode) => {
-    const url = new URL("https://opendart.fss.or.kr/api/fnlttSinglIndx.json");
+  const buildUrl = (year, reportCode) => {
+    const url = new URL("https://opendart.fss.or.kr/api/fnlttSinglAcnt.json");
     url.searchParams.set("crtfc_key", API_KEY);
     url.searchParams.set("corp_code", corp.corpCode);
     url.searchParams.set("bsns_year", String(year));
     url.searchParams.set("reprt_code", reportCode);
-    url.searchParams.set("idx_cl_code", idxClCode);
     return url;
   };
 
@@ -214,56 +290,28 @@ async function fetchIndicators(corp) {
 
   for (const year of candidateYears) {
     for (const reportCode of REPORT_CODES) {
-      let profitability;
-      let stability;
+      let statement;
 
       try {
-        [profitability, stability] = await Promise.all([
-          fetchJson(buildUrl("M210000", year, reportCode)),
-          fetchJson(buildUrl("M220000", year, reportCode)),
-        ]);
+        statement = await fetchJson(buildUrl(year, reportCode));
       } catch (error) {
         attempts.push(`${year}/${reportCode}:fetch failed`);
         continue;
       }
 
-      const profitabilityStatus = profitability.status || "900";
-      const stabilityStatus = stability.status || "900";
-      const profitabilityList =
-        profitabilityStatus === "000" && Array.isArray(profitability.list)
-          ? profitability.list
-          : [];
-      const stabilityList =
-        stabilityStatus === "000" && Array.isArray(stability.list) ? stability.list : [];
+      const status = statement.status || "900";
+      const accountList = status === "000" && Array.isArray(statement.list) ? statement.list : [];
 
-      attempts.push(
-        `${year}/${reportCode}:profitability=${profitabilityStatus},stability=${stabilityStatus}`,
-      );
+      attempts.push(`${year}/${reportCode}:status=${status}`);
 
-      const roe = pickMetric(profitabilityList, [
-        "ROE",
-        "Return on equity",
-        "자기자본이익률",
-        "자기자본순이익률",
-      ]);
-      const opMargin = pickMetric(profitabilityList, [
-        "영업이익률",
-        "매출액영업이익률",
-        "Operating income margin",
-        "Operating profit margin",
-      ]);
-      const debtRatio = pickMetric(stabilityList, [
-        "부채비율",
-        "Debt ratio",
-        "총부채비율",
-      ]);
-
-      if (!profitabilityList.length && !stabilityList.length) {
+      if (!accountList.length) {
         continue;
       }
 
+      const { roe, opMargin, debtRatio } = computeIndicators(accountList);
+
       if (roe === "" && opMargin === "" && debtRatio === "") {
-        attempts.push(`${year}/${reportCode}:metric match missed`);
+        attempts.push(`${year}/${reportCode}:account match missed`);
         continue;
       }
 
@@ -281,7 +329,7 @@ async function fetchIndicators(corp) {
         catalyst: inferCatalyst(Number(roe || 0), debtRatio),
         governance: "",
         confidence: inferConfidence(Number(roe || 0), Number(opMargin || 0), debtRatio),
-        source: `opendart:${year}:${reportCode}`,
+        source: `opendart-acnt:${year}:${reportCode}`,
       };
     }
   }
