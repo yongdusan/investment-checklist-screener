@@ -1,14 +1,14 @@
-name: Daily Stock Report
+name: Refresh Stock Universe
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 23 * * 0-4"
+    - cron: "0 22 * * 6"
 
 jobs:
-  build-and-publish:
+  refresh-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: write
 
@@ -23,10 +23,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run daily pipeline
-        run: node ./scripts/run-report-only.mjs
+      - name: Refresh universe and report
+        env:
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          REPORT_LIMIT: "100"
+        run: node ./scripts/run-daily-pipeline.mjs
 
-      - name: Commit generated reports
+      - name: Commit refreshed data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -35,14 +38,14 @@ jobs:
             git add -f data/universe.enriched.csv
           fi
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "Update daily stock report"
+          git commit -m "Refresh stock universe and report"
           git push
 
-      - name: Upload report artifact
+      - name: Upload refresh artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-stock-report
+          name: refreshed-stock-universe
           path: |
             reports/*.md
             data/universe.latest.csv

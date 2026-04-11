@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import {
   REPORT_CONFIG,
+  getReportLimit,
   getReportMinScore,
   getReportTopN,
   getReportYear,
@@ -11,6 +12,7 @@ import {
 } from "../config/reporting.mjs";
 
 const year = getReportYear();
+const limit = getReportLimit();
 const minScore = String(getReportMinScore());
 const topN = String(getReportTopN());
 
@@ -32,7 +34,7 @@ function runNode(script, args) {
 }
 
 async function main() {
-  runNode("./scripts/build-dart-universe.mjs", [String(year)]);
+  runNode("./scripts/build-dart-universe.mjs", [String(year), String(limit)]);
 
   const hasBasic = await exists("./data/krx-basic.csv");
   const hasValuation = await exists("./data/krx-valuation.csv");
@@ -58,7 +60,7 @@ async function main() {
   ]);
 
   console.log(
-    `리포트 설정: 기준연도 ${year}, 최소점수 ${minScore}, 상위 후보 ${topN}개`,
+    `리포트 설정: 기준연도 ${year}, 대상 ${limit}개, 최소점수 ${minScore}, 상위 후보 ${topN}개`,
   );
 }
 

@@ -1,6 +1,7 @@
 export const REPORT_CONFIG = Object.freeze({
   timeZone: "Asia/Seoul",
   defaultYearOffset: 1,
+  defaultUniverseLimit: 100,
   minScore: 60,
   topN: 10,
   reportDir: "./reports",
@@ -29,4 +30,8 @@ export function getReportMinScore(env = process.env) {
 
 export function getReportTopN(env = process.env) {
   return Number(env.REPORT_TOP_N || REPORT_CONFIG.topN);
+}
+
+export function getReportLimit(env = process.env) {
+  return Number(env.REPORT_LIMIT || REPORT_CONFIG.defaultUniverseLimit);
 }

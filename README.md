@@ -16,11 +16,19 @@
 
 ## GitHub Actions 서버 자동화
 
-이 프로젝트에는 GitHub Actions 워크플로 예시가 포함되어 있습니다:
+이 프로젝트에는 두 개의 GitHub Actions 워크플로가 포함되어 있습니다:
 
 - [daily-report.yml](/Users/ahn-yongsung/Project/investment-checklist-screener/.github/workflows/daily-report.yml)
+- [refresh-universe.yml](/Users/ahn-yongsung/Project/investment-checklist-screener/.github/workflows/refresh-universe.yml)
 
-동작 순서:
+`Daily Stock Report` 동작 순서:
+
+1. 기존 `data/universe.enriched.csv` 또는 `data/universe.latest.csv` 확인
+2. Markdown 리포트 생성
+3. `reports/index.md` 히스토리 갱신
+4. 생성된 리포트를 저장소에 자동 커밋
+
+`Refresh Stock Universe` 동작 순서:
 
 1. OpenDART 유니버스 생성
 2. KRX CSV가 저장소에 있으면 병합
@@ -38,7 +46,9 @@
 - 기본 상위 후보 수: `10`
 - 기본 기준연도: 현재 연도 - 1
 
-환경변수 `REPORT_MIN_SCORE`, `REPORT_TOP_N`, `REPORT_YEAR` 를 주면 일시적으로 덮어쓸 수 있습니다.
+환경변수 `REPORT_MIN_SCORE`, `REPORT_TOP_N`, `REPORT_YEAR`, `REPORT_LIMIT` 를 주면 일시적으로 덮어쓸 수 있습니다.
+
+기본 `REPORT_LIMIT` 은 `100`입니다. 전체 상장사를 한 번에 조회하면 OpenDART 호출 수가 과도해져 워크플로가 오래 걸릴 수 있어서, MVP 단계에서는 제한된 유니버스를 먼저 안정적으로 갱신하는 구조를 권장합니다.
 
 현재 스케줄은 `30 23 * * 0-4` 로 설정되어 있습니다. 이는 한국시간 기준 평일 오전 8시 30분에 해당합니다.
 
@@ -125,7 +135,14 @@ OPENDART_API_KEY=발급받은키 \
 node ./scripts/run-daily-pipeline.mjs
 ```
 
-이 스크립트는 DART 수집, KRX 병합, 리포트 생성을 순서대로 실행합니다.
+이 스크립트는 DART 수집, KRX 병합, 리포트 생성을 순서대로 실행합니다. 환경변수 `REPORT_LIMIT` 이 없으면 기본 100개 종목만 대상으로 삼습니다.
+
+이미 있는 CSV로 리포트만 다시 만들고 싶다면:
+
+```bash
+cd /Users/ahn-yongsung/Project/investment-checklist-screener
+node ./scripts/run-report-only.mjs
+```
 
 ## 추천 사용 흐름
 
