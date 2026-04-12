@@ -50,6 +50,16 @@ async function main() {
       enrichedOutput,
     ]);
     reportInput = enrichedOutput;
+    console.log("KRX valuation/marketcap CSV를 함께 사용해 universe.enriched.csv를 생성합니다.");
+  } else {
+    const missing = [
+      !hasBasic ? "krx-basic.csv" : null,
+      !hasValuation ? "krx-valuation.csv" : null,
+      !hasMarketCap ? "krx-marketcap.csv" : null,
+    ].filter(Boolean);
+    console.log(
+      `추가 KRX CSV가 부족해 universe.latest.csv로 리포트를 생성합니다. 누락: ${missing.join(", ") || "없음"}`,
+    );
   }
 
   runNode("./scripts/generate-daily-report.mjs", [
