@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
   REPORT_CONFIG,
@@ -14,6 +15,7 @@ const outputPath = resolve(
 );
 const minScore = Number(process.argv[4] || getReportMinScore());
 const topN = Number(process.argv[5] || getReportTopN());
+const manualOverridesPath = resolve(process.argv[6] || REPORT_CONFIG.manualOverridesPath);
 
 function parseCsv(text) {
   const rows = [];
@@ -77,6 +79,76 @@ function formatNumber(value) {
   return num === null ? "-" : new Intl.NumberFormat("ko-KR").format(num);
 }
 
+function normalizeCode(value) {
+  return String(value ?? "")
+    .replace(/[^\d]/g, "")
+    .padStart(6, "0")
+    .slice(-6);
+}
+
+function exists(path) {
+  return access(path, constants.F_OK)
+    .then(() => true)
+    .catch(() => false);
+}
+
+function mergeManualOverrides(stocks, overrideRows) {
+  if (overrideRows.length === 0) {
+    return { stocks, appliedCount: 0 };
+  }
+
+  const overridesByCode = new Map();
+  const overridesByName = new Map();
+
+  overrideRows.forEach((row) => {
+    const code = normalizeCode(row.stockCode || row.종목코드 || row.단축코드);
+    const name = String(row.name || row.종목명 || "").trim();
+    if (code) {
+      overridesByCode.set(code, row);
+    }
+    if (name) {
+      overridesByName.set(name, row);
+    }
+  });
+
+  let appliedCount = 0;
+  const merged = stocks.map((stock) => {
+    const override =
+      overridesByCode.get(normalizeCode(stock.stockCode)) ||
+      overridesByName.get(String(stock.name || "").trim());
+
+    if (!override) {
+      return stock;
+    }
+
+    const overrideFields = [];
+    const next = { ...stock };
+
+    for (const field of ["catalyst", "governance", "confidence", "netCash", "market", "sector"]) {
+      const value = String(override[field] ?? "").trim();
+      if (value) {
+        next[field] = value;
+        overrideFields.push(field);
+      }
+    }
+
+    const note = String(override.note || override.memo || override.메모 || "").trim();
+    if (note) {
+      next.overrideNote = note;
+      overrideFields.push("note");
+    }
+
+    if (overrideFields.length > 0) {
+      appliedCount += 1;
+      next.overrideFields = overrideFields.filter((field, index, items) => items.indexOf(field) === index);
+    }
+
+    return next;
+  });
+
+  return { stocks: merged, appliedCount };
+}
+
 async function updateHistoryIndex(reportDirPath) {
   const entries = await readdir(reportDirPath, { withFileTypes: true });
   const reportFiles = entries
@@ -105,7 +177,18 @@ async function updateHistoryIndex(reportDirPath) {
 
 async function main() {
   const csvText = await readFile(inputPath, "utf8");
-  const stocks = parseCsv(csvText).map(scoreStock).sort((a, b) => b.score - a.score);
+  let baseStocks = parseCsv(csvText);
+  let appliedOverrides = 0;
+
+  if (await exists(manualOverridesPath)) {
+    const overrideText = await readFile(manualOverridesPath, "utf8");
+    const overrideRows = parseCsv(overrideText);
+    const merged = mergeManualOverrides(baseStocks, overrideRows);
+    baseStocks = merged.stocks;
+    appliedOverrides = merged.appliedCount;
+  }
+
+  const stocks = baseStocks.map(scoreStock).sort((a, b) => b.score - a.score);
   const shortlist = stocks.filter((stock) => stock.score >= minScore).slice(0, topN);
   const fieldCoverage = {
     marketCap: stocks.filter((stock) => toNumber(stock.marketCap) !== null).length,
@@ -145,6 +228,7 @@ async function main() {
     `- 시가총액 데이터 채워짐: ${fieldCoverage.marketCap}/${stocks.length}`,
     `- PER 데이터 채워짐: ${fieldCoverage.per}/${stocks.length}`,
     `- PBR 데이터 채워짐: ${fieldCoverage.pbr}/${stocks.length}`,
+    `- 수동 오버레이 반영 종목 수: ${appliedOverrides}/${stocks.length}`,
     ``,
   ];
 
@@ -209,6 +293,12 @@ async function main() {
     lines.push(`- ROE / 영업이익률: ${stock.roe || "-"} / ${stock.opMargin || "-"}`);
     lines.push(`- 부채비율 / 배당수익률: ${stock.debtRatio || "-"} / ${stock.dividendYield || "-"}`);
     lines.push(`- 촉매 / 확신도: ${stock.catalyst || "-"} / ${stock.confidence || "-"}`);
+    if (stock.overrideFields?.length) {
+      lines.push(`- 수동 오버레이: ${stock.overrideFields.join(", ")}`);
+    }
+    if (stock.overrideNote) {
+      lines.push(`- 수동 메모: ${stock.overrideNote}`);
+    }
     lines.push(`- 이유: ${stock.reasons.join(" / ")}`);
     lines.push("");
     lines.push("| 항목 | 점수 | 메모 |");

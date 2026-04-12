@@ -7,6 +7,7 @@ export const REPORT_CONFIG = Object.freeze({
   reportDir: "./reports",
   latestUniversePath: "./data/universe.latest.csv",
   enrichedUniversePath: "./data/universe.enriched.csv",
+  manualOverridesPath: "./data/manual-overrides.csv",
   historyIndexPath: "./reports/index.md",
 });
 
