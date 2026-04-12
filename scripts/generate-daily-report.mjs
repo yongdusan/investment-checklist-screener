@@ -16,6 +16,15 @@ const outputPath = resolve(
 const minScore = Number(process.argv[4] || getReportMinScore());
 const topN = Number(process.argv[5] || getReportTopN());
 const manualOverridesPath = resolve(process.argv[6] || REPORT_CONFIG.manualOverridesPath);
+const REQUIRED_INPUT_HEADERS = ["name", "stockCode", "market", "sector", "roe", "debtRatio", "opMargin"];
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function logStep(message, extra = "") {
+  console.log(`[${timestamp()}] ${message}${extra ? ` ${extra}` : ""}`);
+}
 
 function parseCsv(text) {
   const rows = [];
@@ -72,6 +81,73 @@ function parseCsv(text) {
     });
     return obj;
   });
+}
+
+function parseCsvWithHeaders(text) {
+  const rows = [];
+  let current = "";
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !insideQuotes) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !insideQuotes) {
+      if (char === "\r" && next === "\n") {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((cell) => cell !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some((cell) => cell !== "")) {
+    rows.push(row);
+  }
+
+  const [headers = [], ...dataRows] = rows;
+  const normalizedHeaders = headers.map((header) => String(header).replace(/^\uFEFF/, "").trim());
+  const parsedRows = dataRows.map((cells) => {
+    const obj = {};
+    normalizedHeaders.forEach((header, index) => {
+      obj[header] = (cells[index] ?? "").trim();
+    });
+    return obj;
+  });
+
+  return { headers: normalizedHeaders, rows: parsedRows };
+}
+
+function ensureHeaders(headers, requiredHeaders, label) {
+  const missing = requiredHeaders.filter((header) => !headers.includes(header));
+  if (missing.length > 0) {
+    throw new Error(`${label} 필수 헤더 누락: ${missing.join(", ")}`);
+  }
 }
 
 function formatNumber(value) {
@@ -301,16 +377,22 @@ function describePreviousDelta(stock, index, previousSummary) {
 }
 
 async function main() {
+  logStep("일간 리포트 생성 시작");
   const csvText = await readFile(inputPath, "utf8");
-  let baseStocks = parseCsv(csvText);
+  const { headers: inputHeaders, rows: parsedStocks } = parseCsvWithHeaders(csvText);
+  ensureHeaders(inputHeaders, REQUIRED_INPUT_HEADERS, "리포트 입력 CSV");
+  let baseStocks = parsedStocks;
   let appliedOverrides = 0;
+  logStep("리포트 입력 스키마 검증 완료");
 
   if (await exists(manualOverridesPath)) {
     const overrideText = await readFile(manualOverridesPath, "utf8");
-    const overrideRows = parseCsv(overrideText);
+    const { headers: overrideHeaders, rows: overrideRows } = parseCsvWithHeaders(overrideText);
+    ensureHeaders(overrideHeaders, ["stockCode", "name"], "manual-overrides.csv");
     const merged = mergeManualOverrides(baseStocks, overrideRows);
     baseStocks = merged.stocks;
     appliedOverrides = merged.appliedCount;
+    logStep("수동 오버레이 병합 완료", `applied=${appliedOverrides}`);
   }
 
   const stocks = scoreStocks(baseStocks).sort((a, b) => b.score - a.score);
@@ -457,7 +539,7 @@ async function main() {
   await mkdir(reportDirPath, { recursive: true });
   await writeFile(outputPath, `${lines.join("\n")}\n`, "utf8");
   await updateHistoryIndex(reportDirPath);
-  console.log(`완료: ${outputPath}`);
+  logStep(`완료: ${outputPath}`);
 }
 
 main().catch((error) => {

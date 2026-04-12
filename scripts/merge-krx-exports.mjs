@@ -17,6 +17,23 @@ const basicPath = resolve(basicPathArg);
 const valuationPath = resolve(valuationPathArg);
 const marketCapPath = resolve(marketCapPathArg);
 const outputPath = resolve(outputPathArg || "./data/universe.enriched.csv");
+const REQUIRED_DART_HEADERS = [
+  "name",
+  "stockCode",
+  "market",
+  "sector",
+  "roe",
+  "debtRatio",
+  "opMargin",
+];
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function logStep(message, extra = "") {
+  console.log(`[${timestamp()}] ${message}${extra ? ` ${extra}` : ""}`);
+}
 
 function parseCsv(text) {
   const rows = [];
@@ -73,6 +90,78 @@ function parseCsv(text) {
     });
     return obj;
   });
+}
+
+function parseCsvWithHeaders(text) {
+  const rows = [];
+  let current = "";
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !insideQuotes) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !insideQuotes) {
+      if (char === "\r" && next === "\n") {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((cell) => cell !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some((cell) => cell !== "")) {
+    rows.push(row);
+  }
+
+  const [headers = [], ...dataRows] = rows;
+  const normalizedHeaders = headers.map((header) => String(header).replace(/^\uFEFF/, "").trim());
+  const parsedRows = dataRows.map((cells) => {
+    const obj = {};
+    normalizedHeaders.forEach((header, index) => {
+      obj[header] = (cells[index] ?? "").trim();
+    });
+    return obj;
+  });
+  return { headers: normalizedHeaders, rows: parsedRows };
+}
+
+function ensureHeaders(headers, requiredHeaders, label) {
+  const missing = requiredHeaders.filter((header) => !headers.includes(header));
+  if (missing.length > 0) {
+    throw new Error(`${label} 필수 헤더 누락: ${missing.join(", ")}`);
+  }
+}
+
+function ensureAnyHeader(headers, candidates, label) {
+  if (!candidates.some((header) => headers.includes(header))) {
+    throw new Error(`${label} 후보 헤더 누락: ${candidates.join(", ")}`);
+  }
 }
 
 function csvEscape(value) {
@@ -142,6 +231,7 @@ function inferShareholderReturn(existing, dividendYield) {
 }
 
 async function main() {
+  logStep("KRX 병합 시작");
   const [dartText, basicText, valuationText, marketCapText] = await Promise.all([
     readFile(dartPath, "utf8"),
     readKrxCsv(basicPath),
@@ -149,10 +239,23 @@ async function main() {
     readKrxCsv(marketCapPath),
   ]);
 
-  const dartRows = parseCsv(dartText);
-  const basicRows = parseCsv(basicText);
-  const valuationRows = parseCsv(valuationText);
-  const marketCapRows = parseCsv(marketCapText);
+  const { headers: dartHeaders, rows: dartRows } = parseCsvWithHeaders(dartText);
+  const { headers: basicHeaders, rows: basicRows } = parseCsvWithHeaders(basicText);
+  const { headers: valuationHeaders, rows: valuationRows } = parseCsvWithHeaders(valuationText);
+  const { headers: marketCapHeaders, rows: marketCapRows } = parseCsvWithHeaders(marketCapText);
+
+  ensureHeaders(dartHeaders, REQUIRED_DART_HEADERS, "DART CSV");
+  ensureAnyHeader(basicHeaders, ["종목코드", "단축코드", "표준코드"], "KRX basic 종목코드");
+  ensureAnyHeader(valuationHeaders, ["종목코드", "단축코드", "표준코드"], "KRX valuation 종목코드");
+  ensureAnyHeader(valuationHeaders, ["PER", "주가수익비율"], "KRX valuation PER");
+  ensureAnyHeader(valuationHeaders, ["PBR", "주가순자산비율"], "KRX valuation PBR");
+  ensureAnyHeader(marketCapHeaders, ["종목코드", "단축코드", "표준코드"], "KRX marketcap 종목코드");
+  ensureAnyHeader(
+    marketCapHeaders,
+    ["시가총액", "상장시가총액", "자기주식제외시가총액", "자기주식 제외 시가총액(A*B)", "자기주식 제외 시가총액"],
+    "KRX marketcap 시가총액",
+  );
+  logStep("KRX 병합 입력 스키마 검증 완료");
 
   const basicMap = new Map(
     basicRows.map((row) => [
@@ -250,7 +353,7 @@ async function main() {
   ];
 
   await writeFile(outputPath, `${lines.join("\n")}\n`, "utf8");
-  console.log(`완료: ${enriched.length}개 종목을 ${outputPath} 로 병합했습니다.`);
+  logStep(`완료: ${enriched.length}개 종목을 ${outputPath} 로 병합했습니다.`);
 }
 
 main().catch((error) => {

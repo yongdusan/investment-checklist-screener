@@ -12,6 +12,7 @@ const KRX_BASIC_PATH = resolve(process.env.KRX_BASIC_PATH || "./data/krx-basic.c
 const REPORT_CODES = ["11011", "11014", "11012", "11013"];
 const CONCURRENCY = 4;
 const FETCH_RETRIES = 2;
+const FETCH_RETRY_BASE_DELAY_MS = 300;
 
 if (!API_KEY) {
   console.error("OPENDART_API_KEY 또는 DART_API_KEY 환경변수가 필요합니다.");
@@ -20,6 +21,14 @@ if (!API_KEY) {
 
 function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function logStep(message, extra = "") {
+  console.log(`[${timestamp()}] ${message}${extra ? ` ${extra}` : ""}`);
 }
 
 function normalizeMetricLabel(value) {
@@ -355,7 +364,9 @@ async function fetchJson(url, retries = FETCH_RETRIES) {
     } catch (error) {
       lastError = error;
       if (attempt < retries) {
-        await sleep(250 * (attempt + 1));
+        const delayMs = FETCH_RETRY_BASE_DELAY_MS * (2 ** attempt);
+        logStep("OpenDART 재시도 대기", `attempt=${attempt + 1}/${retries + 1} delay=${delayMs}ms`);
+        await sleep(delayMs);
       }
     }
   }
@@ -522,7 +533,7 @@ async function mapWithConcurrency(items, worker) {
 }
 
 async function main() {
-  console.log(
+  logStep(
     `OpenDART 유니버스를 불러오는 중... 기준연도 ${YEAR}, 조회 대상 ${
       LIMIT ? `최대 ${LIMIT}개` : "전체 상장사"
     }`,
@@ -537,9 +548,7 @@ async function main() {
     })
     .filter(Boolean);
 
-  console.log(
-    `실제 조회 대상: ${selected.length}개 (KRX basic CSV 기준)`,
-  );
+  logStep(`실제 조회 대상: ${selected.length}개 (KRX basic CSV 기준)`);
 
   if (!selected.length) {
     throw new Error("KRX 기본정보 CSV와 OpenDART 회사코드 매핑 결과가 0건입니다.");
@@ -571,7 +580,7 @@ async function main() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
-    console.log("수집 실패 요약:");
+    logStep("수집 실패 요약:");
     topErrors.forEach(([message, count]) => {
       console.log(`- ${count}건: ${message}`);
     });
@@ -622,7 +631,7 @@ async function main() {
 
   await mkdir(dirname(OUTPUT), { recursive: true });
   await writeFile(OUTPUT, `${lines.join("\n")}\n`, "utf8");
-  console.log(`완료: ${successful.length}개 종목을 ${OUTPUT} 에 저장했습니다.`);
+  logStep(`완료: ${successful.length}개 종목을 ${OUTPUT} 에 저장했습니다.`);
 }
 
 main().catch((error) => {
