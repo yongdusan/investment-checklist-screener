@@ -13,6 +13,7 @@ const REPORT_CODES = ["11011", "11014", "11012", "11013"];
 const CONCURRENCY = 4;
 const FETCH_RETRIES = 2;
 const FETCH_RETRY_BASE_DELAY_MS = 300;
+const TREND_YEARS = 3;
 
 if (!API_KEY) {
   console.error("OPENDART_API_KEY 또는 DART_API_KEY 환경변수가 필요합니다.");
@@ -282,6 +283,27 @@ function computeIndicators(accountList) {
     "영업활동으로부터의순현금유입",
     "영업활동으로인한순현금흐름",
   ]);
+  const depreciationExpense = [
+    pickAccountAmount(accountList, "IS", ["감가상각비", "감가상각비및상각비"], "thstrm_add_amount"),
+    pickAccountAmount(accountList, "IS", ["유형자산감가상각비"], "thstrm_add_amount"),
+    pickAccountAmount(accountList, "IS", ["무형자산상각비"], "thstrm_add_amount"),
+  ]
+    .filter((value) => value !== null)
+    .reduce((sum, value) => sum + value, 0);
+  const tangibleCapex = pickAccountAmount(accountList, "CF", [
+    "유형자산의취득",
+    "유형자산취득",
+    "유형자산의증가",
+  ]);
+  const intangibleCapex = pickAccountAmount(accountList, "CF", [
+    "무형자산의취득",
+    "무형자산취득",
+    "무형자산의증가",
+  ]);
+  const investmentPropertyCapex = pickAccountAmount(accountList, "CF", [
+    "투자부동산의취득",
+    "투자부동산취득",
+  ]);
 
   const averageEquity =
     equity !== null && previousEquity !== null ? (equity + previousEquity) / 2 : equity;
@@ -326,6 +348,22 @@ function computeIndicators(accountList) {
     operatingCashFlow !== null && netIncome !== null && netIncome !== 0
       ? (operatingCashFlow / netIncome).toFixed(2)
       : "";
+  const ebitda =
+    operatingIncome !== null
+      ? normalizeNumber(operatingIncome + Math.max(0, depreciationExpense))
+      : "";
+  const capex =
+    tangibleCapex !== null || intangibleCapex !== null || investmentPropertyCapex !== null
+      ? normalizeNumber(
+          Math.abs(tangibleCapex ?? 0) +
+            Math.abs(intangibleCapex ?? 0) +
+            Math.abs(investmentPropertyCapex ?? 0),
+        )
+      : "";
+  const fcf =
+    operatingCashFlow !== null
+      ? normalizeNumber(operatingCashFlow - Number(capex || 0))
+      : "";
 
   return {
     roe: normalizeNumber(roe),
@@ -334,7 +372,18 @@ function computeIndicators(accountList) {
     debtRatio: normalizeNumber(debtRatio),
     interestCoverage: normalizeNumber(interestCoverage),
     ocfToNetIncome: normalizeNumber(ocfToNetIncome),
+    totalBorrowings: normalizeNumber(totalBorrowings),
+    cashAndEquivalents: normalizeNumber(cashAndEquivalents),
+    ebitda,
+    fcf,
   };
+}
+
+function computeTrend(currentValue, oldestValue) {
+  if (currentValue === "" || oldestValue === "") {
+    return "";
+  }
+  return normalizeNumber(Number(currentValue) - Number(oldestValue));
 }
 
 function inferCatalyst(roe, debtRatio) {
@@ -425,7 +474,7 @@ async function fetchCorpUniverse() {
   }
 }
 
-async function fetchIndicators(corp) {
+async function fetchYearSnapshot(corp, year, attempts) {
   const buildUrl = (year, reportCode) => {
     const url = new URL("https://opendart.fss.or.kr/api/fnlttSinglAcnt.json");
     url.searchParams.set("crtfc_key", API_KEY);
@@ -435,79 +484,106 @@ async function fetchIndicators(corp) {
     return url;
   };
 
-  const candidateYears = [YEAR, YEAR - 1];
+  for (const reportCode of REPORT_CODES) {
+    let statement;
+
+    try {
+      statement = await fetchJson(buildUrl(year, reportCode));
+    } catch (error) {
+      attempts.push(`${year}/${reportCode}:fetch failed`);
+      continue;
+    }
+
+    const status = statement.status || "900";
+    const accountList = status === "000" && Array.isArray(statement.list) ? statement.list : [];
+
+    attempts.push(`${year}/${reportCode}:status=${status}`);
+
+    if (!accountList.length) {
+      continue;
+    }
+
+    const indicators = computeIndicators(accountList);
+
+    if (
+      indicators.roe === "" &&
+      indicators.roic === "" &&
+      indicators.opMargin === "" &&
+      indicators.debtRatio === "" &&
+      indicators.interestCoverage === "" &&
+      indicators.ocfToNetIncome === ""
+    ) {
+      attempts.push(`${year}/${reportCode}:account match missed`);
+      continue;
+    }
+
+    return {
+      year,
+      reportCode,
+      indicators,
+    };
+  }
+
+  return null;
+}
+
+async function fetchIndicators(corp) {
   const attempts = [];
+  const yearlySnapshots = [];
 
-  for (const year of candidateYears) {
-    for (const reportCode of REPORT_CODES) {
-      let statement;
-
-      try {
-        statement = await fetchJson(buildUrl(year, reportCode));
-      } catch (error) {
-        attempts.push(`${year}/${reportCode}:fetch failed`);
-        continue;
-      }
-
-      const status = statement.status || "900";
-      const accountList = status === "000" && Array.isArray(statement.list) ? statement.list : [];
-
-      attempts.push(`${year}/${reportCode}:status=${status}`);
-
-      if (!accountList.length) {
-        continue;
-      }
-
-      const { roe, roic, opMargin, debtRatio, interestCoverage, ocfToNetIncome } =
-        computeIndicators(accountList);
-
-      if (
-        roe === "" &&
-        roic === "" &&
-        opMargin === "" &&
-        debtRatio === "" &&
-        interestCoverage === "" &&
-        ocfToNetIncome === ""
-      ) {
-        attempts.push(`${year}/${reportCode}:account match missed`);
-        continue;
-      }
-
-      return {
-        name: corp.name || corp.corpName,
-        stockCode: corp.stockCode,
-        corpCode: corp.corpCode,
-        market: corp.market || "",
-        sector: corp.sector || "",
-        per: "",
-        roe,
-        roic,
-        pbr: "",
-        debtRatio,
-        opMargin,
-        interestCoverage,
-        ocfToNetIncome,
-        dividendYield: "",
-        netCash: "",
-        catalyst: inferCatalyst(Number(roe || 0), debtRatio),
-        governance: "",
-        shareholderReturn: "",
-        valueUp: "",
-        buyback: "",
-        treasuryCancellation: "",
-        payoutRaise: "",
-        assetSale: "",
-        spinOff: "",
-        insiderBuying: "",
-        foreignOwnershipRebound: "",
-        coverageInitiation: "",
-        confidence: inferConfidence(Number(roe || 0), Number(opMargin || 0), debtRatio),
-        source: `opendart-acnt:${year}:${reportCode}`,
-      };
+  for (let offset = 0; offset < TREND_YEARS; offset += 1) {
+    const targetYear = YEAR - offset;
+    const snapshot = await fetchYearSnapshot(corp, targetYear, attempts);
+    if (snapshot) {
+      yearlySnapshots.push(snapshot);
     }
   }
 
-  throw new Error(attempts.slice(-4).join(" | "));
+  if (yearlySnapshots.length === 0) {
+    throw new Error(attempts.slice(-6).join(" | "));
+  }
+
+  const currentSnapshot = yearlySnapshots[0];
+  const oldestSnapshot = yearlySnapshots[yearlySnapshots.length - 1];
+  const current = currentSnapshot.indicators;
+
+  return {
+    name: corp.name || corp.corpName,
+    stockCode: corp.stockCode,
+    corpCode: corp.corpCode,
+    market: corp.market || "",
+    sector: corp.sector || "",
+    per: "",
+    roe: current.roe,
+    roic: current.roic,
+    roicTrend3Y: computeTrend(current.roic, oldestSnapshot.indicators.roic),
+    pbr: "",
+    debtRatio: current.debtRatio,
+    opMargin: current.opMargin,
+    opMarginTrend3Y: computeTrend(current.opMargin, oldestSnapshot.indicators.opMargin),
+    interestCoverage: current.interestCoverage,
+    ocfToNetIncome: current.ocfToNetIncome,
+    dividendYield: "",
+    totalBorrowings: current.totalBorrowings,
+    cashAndEquivalents: current.cashAndEquivalents,
+    ebitda: current.ebitda,
+    fcf: current.fcf,
+    netCash: "",
+    catalyst: inferCatalyst(Number(current.roe || 0), current.debtRatio),
+    governance: "",
+    shareholderReturn: "",
+    valueUp: "",
+    buyback: "",
+    treasuryCancellation: "",
+    payoutRaise: "",
+    assetSale: "",
+    spinOff: "",
+    insiderBuying: "",
+    foreignOwnershipRebound: "",
+    coverageInitiation: "",
+    confidence: inferConfidence(Number(current.roe || 0), Number(current.opMargin || 0), current.debtRatio),
+    source: `opendart-acnt:${currentSnapshot.year}:${currentSnapshot.reportCode}`,
+  };
 }
 
 async function mapWithConcurrency(items, worker) {
@@ -561,6 +637,8 @@ async function main() {
       (
         row.roe !== "" ||
         row.roic !== "" ||
+        row.ebitda !== "" ||
+        row.fcf !== "" ||
         row.debtRatio !== "" ||
         row.opMargin !== "" ||
         row.interestCoverage !== "" ||
@@ -601,12 +679,18 @@ async function main() {
     "per",
     "roe",
     "roic",
+    "roicTrend3Y",
     "pbr",
     "debtRatio",
     "opMargin",
+    "opMarginTrend3Y",
     "interestCoverage",
     "ocfToNetIncome",
     "dividendYield",
+    "totalBorrowings",
+    "cashAndEquivalents",
+    "ebitda",
+    "fcf",
     "netCash",
     "catalyst",
     "governance",

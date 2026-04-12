@@ -104,7 +104,7 @@ node ./scripts/merge-krx-exports.mjs \
   ./data/universe.enriched.csv
 ```
 
-생성된 `universe.enriched.csv`를 화면에 넣으면 `시장`, `업종`, `시가총액`, `PER`, `PBR`, `배당수익률`과 함께 `ROIC`, `이자보상배율`, `현금전환율`까지 반영된 후보 리스트를 볼 수 있습니다.
+생성된 `universe.enriched.csv`를 화면에 넣으면 `시장`, `업종`, `시가총액`, `PER`, `PBR`, `EV/EBITDA`, `FCF Yield`, `배당수익률`과 함께 `ROIC`, `3년 추세`, `이자보상배율`, `현금전환율`까지 반영된 후보 리스트를 볼 수 있습니다.
 
 ## 일간 리포트 생성
 
@@ -204,8 +204,8 @@ node ./scripts/run-report-only.mjs
 ## CSV 형식
 
 ```csv
-name,market,sector,marketCap,per,roe,roic,pbr,debtRatio,opMargin,interestCoverage,ocfToNetIncome,dividendYield,shareholderReturn,netCash,catalyst,governance,confidence,valueUp,buyback,treasuryCancellation,payoutRaise,assetSale,spinOff,insiderBuying,foreignOwnershipRebound,coverageInitiation
-메리츠금융지주,KOSPI,금융,21000000000000,6.2,24.5,18.8,1.35,82,28,9.4,1.12,5.2,strong,true,strong,strong,high,true,true,true,true,false,false,false,true,true
+name,market,sector,marketCap,per,pbr,evToEbitda,fcfYield,roe,roic,roicTrend3Y,debtRatio,opMargin,opMarginTrend3Y,interestCoverage,ocfToNetIncome,dividendYield,shareholderReturn,netCash,catalyst,governance,confidence,valueUp,buyback,treasuryCancellation,payoutRaise,assetSale,spinOff,insiderBuying,foreignOwnershipRebound,coverageInitiation
+메리츠금융지주,KOSPI,금융,21000000000000,6.2,1.35,-,-,24.5,18.8,3.4,82,28,4.2,9.4,1.12,5.2,strong,true,strong,strong,high,true,true,true,true,false,false,false,true,true
 ```
 
 ## 입력 규칙
@@ -216,18 +216,22 @@ name,market,sector,marketCap,per,roe,roic,pbr,debtRatio,opMargin,interestCoverag
 - `shareholderReturn`: `strong`, `medium`, `weak`
 - `confidence`: `high`, `medium`, `low`
 - `marketCap`: 원 단위 숫자
+- `evToEbitda`: 숫자
+- `fcfYield`: 숫자
+- `roicTrend3Y`: 최근 3개년 기준 ROIC 변화폭
 - `dividendYield`: 숫자
+- `opMarginTrend3Y`: 최근 3개년 기준 영업이익률 변화폭
 - `interestCoverage`: 숫자
 - `ocfToNetIncome`: 숫자
 - 체크리스트 필드: `true` 또는 `false`
 
 ## 자동 수집에서 채워지는 값
 
-- OpenDART 스크립트는 현재 `ROE`, `ROIC`, `영업이익률`, `부채비율`, `이자보상배율`, `현금전환율` 중심의 정량 데이터를 채웁니다.
+- OpenDART 스크립트는 현재 `ROE`, `ROIC`, `영업이익률`, `부채비율`, `이자보상배율`, `현금전환율`, `EBITDA`, `FCF`, `3년 추세` 중심의 정량 데이터를 채웁니다.
 - `촉매`, `거버넌스`, `확신도`는 일부만 약하게 추정하거나 비워둡니다.
 - `주주환원`은 KRX 배당수익률 기반으로 약하게 추정하고, 체크리스트는 기본적으로 비워 둡니다.
 - 그래서 자동 추천은 1차 후보 압축용으로 쓰고, 최종 판단 전에 정성 검토가 꼭 필요합니다.
-- KRX CSV를 병합하면 `시장`, `업종`, `시가총액`, `PER`, `PBR`, `배당수익률`까지 자동 보강할 수 있습니다.
+- KRX CSV를 병합하면 `시장`, `업종`, `시가총액`, `PER`, `PBR`, `배당수익률`에 더해 `EV/EBITDA`, `FCF Yield`를 계산할 수 있습니다.
 - 정성 항목은 [manual-overrides.csv](/Users/ahn-yongsung/Project/investment-checklist-screener/data/manual-overrides.csv) 로 수동 보강할 수 있습니다.
 
 ## 주의

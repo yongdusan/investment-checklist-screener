@@ -329,7 +329,14 @@ function describeDataSources(stock) {
   const manual = stock.overrideFields || [];
 
   if (toNumber(stock.marketCap) !== null) automatic.push("시가총액");
-  if (toNumber(stock.per) !== null || toNumber(stock.pbr) !== null) automatic.push("밸류에이션");
+  if (
+    toNumber(stock.per) !== null ||
+    toNumber(stock.pbr) !== null ||
+    toNumber(stock.evToEbitda) !== null ||
+    toNumber(stock.fcfYield) !== null
+  ) {
+    automatic.push("밸류에이션");
+  }
   if (
     toNumber(stock.roe) !== null ||
     toNumber(stock.roic) !== null ||
@@ -401,7 +408,11 @@ async function main() {
     marketCap: stocks.filter((stock) => toNumber(stock.marketCap) !== null).length,
     per: stocks.filter((stock) => toNumber(stock.per) !== null).length,
     pbr: stocks.filter((stock) => toNumber(stock.pbr) !== null).length,
+    evToEbitda: stocks.filter((stock) => toNumber(stock.evToEbitda) !== null).length,
+    fcfYield: stocks.filter((stock) => toNumber(stock.fcfYield) !== null).length,
     roic: stocks.filter((stock) => toNumber(stock.roic) !== null).length,
+    roicTrend3Y: stocks.filter((stock) => toNumber(stock.roicTrend3Y) !== null).length,
+    opMarginTrend3Y: stocks.filter((stock) => toNumber(stock.opMarginTrend3Y) !== null).length,
     interestCoverage: stocks.filter((stock) => toNumber(stock.interestCoverage) !== null).length,
     ocfToNetIncome: stocks.filter((stock) => toNumber(stock.ocfToNetIncome) !== null).length,
     market: stocks.filter((stock) => String(stock.market || "").trim()).length,
@@ -443,7 +454,11 @@ async function main() {
     `- 시가총액 데이터 채워짐: ${fieldCoverage.marketCap}/${stocks.length}`,
     `- PER 데이터 채워짐: ${fieldCoverage.per}/${stocks.length}`,
     `- PBR 데이터 채워짐: ${fieldCoverage.pbr}/${stocks.length}`,
+    `- EV/EBITDA 데이터 채워짐: ${fieldCoverage.evToEbitda}/${stocks.length}`,
+    `- FCF Yield 데이터 채워짐: ${fieldCoverage.fcfYield}/${stocks.length}`,
     `- ROIC 데이터 채워짐: ${fieldCoverage.roic}/${stocks.length}`,
+    `- ROIC 3년 추세 채워짐: ${fieldCoverage.roicTrend3Y}/${stocks.length}`,
+    `- 영업이익률 3년 추세 채워짐: ${fieldCoverage.opMarginTrend3Y}/${stocks.length}`,
     `- 이자보상배율 데이터 채워짐: ${fieldCoverage.interestCoverage}/${stocks.length}`,
     `- 현금전환율 데이터 채워짐: ${fieldCoverage.ocfToNetIncome}/${stocks.length}`,
     `- 주주환원 데이터 채워짐: ${fieldCoverage.shareholderReturn}/${stocks.length}`,
@@ -510,8 +525,9 @@ async function main() {
     lines.push(`- 전일 대비: ${describePreviousDelta(stock, index, previousSummary)}`);
     lines.push(`- 시장/업종: ${stock.market || "-"} / ${stock.sector || "-"}`);
     lines.push(`- 시가총액: ${formatNumber(stock.marketCap)}`);
-    lines.push(`- PER / PBR: ${stock.per || "-"} / ${stock.pbr || "-"}`);
+    lines.push(`- PER / PBR / EV-EBITDA / FCF Yield: ${stock.per || "-"} / ${stock.pbr || "-"} / ${stock.evToEbitda || "-"} / ${stock.fcfYield || "-"}`);
     lines.push(`- ROE / ROIC / 영업이익률: ${stock.roe || "-"} / ${stock.roic || "-"} / ${stock.opMargin || "-"}`);
+    lines.push(`- 3년 추세(ROIC / 영업이익률): ${stock.roicTrend3Y || "-"} / ${stock.opMarginTrend3Y || "-"}`);
     lines.push(`- 이자보상배율 / 현금전환율: ${stock.interestCoverage || "-"} / ${stock.ocfToNetIncome || "-"}`);
     lines.push(`- 부채비율 / 배당수익률: ${stock.debtRatio || "-"} / ${stock.dividendYield || "-"}`);
     lines.push(`- 촉매 / 주주환원 / 확신도: ${stock.catalyst || "-"} / ${stock.shareholderReturn || "-"} / ${stock.confidence || "-"}`);

@@ -168,7 +168,7 @@ async function main() {
   }).length;
 
   console.log(
-    `검증 완료: ${mode} / rows=${rows.length} / market=${marketCount} / sector=${sectorCount} / ${logCoverage(rows, ["roe", "roic", "debtRatio", "opMargin", "interestCoverage", "ocfToNetIncome"])}${mode === "enriched" ? ` / ${logCoverage(rows, ["per", "pbr", "marketCap", "dividendYield"])} / shareholderSignals=${shareholderCoverage}` : ""}${lowCompletenessCount ? ` / completeness<${LOW_COMPLETENESS_THRESHOLD}=${lowCompletenessCount}` : ""}`,
+    `검증 완료: ${mode} / rows=${rows.length} / market=${marketCount} / sector=${sectorCount} / ${logCoverage(rows, ["roe", "roic", "roicTrend3Y", "debtRatio", "opMargin", "opMarginTrend3Y", "interestCoverage", "ocfToNetIncome"])}${mode === "enriched" ? ` / ${logCoverage(rows, ["per", "pbr", "evToEbitda", "fcfYield", "marketCap", "dividendYield"])} / shareholderSignals=${shareholderCoverage}` : ""}${lowCompletenessCount ? ` / completeness<${LOW_COMPLETENESS_THRESHOLD}=${lowCompletenessCount}` : ""}`,
   );
 }
 

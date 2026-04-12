@@ -230,6 +230,25 @@ function inferShareholderReturn(existing, dividendYield) {
   return "";
 }
 
+function computeEvToEbitda(marketCap, totalBorrowings, cashAndEquivalents, ebitda) {
+  if (marketCap === "" || ebitda === "" || Number(ebitda) <= 0) {
+    return "";
+  }
+  const enterpriseValue =
+    Number(marketCap) + Number(totalBorrowings || 0) - Number(cashAndEquivalents || 0);
+  if (!Number.isFinite(enterpriseValue) || enterpriseValue <= 0) {
+    return "";
+  }
+  return normalizeNumber(enterpriseValue / Number(ebitda));
+}
+
+function computeFcfYield(marketCap, fcf) {
+  if (marketCap === "" || fcf === "" || Number(marketCap) <= 0) {
+    return "";
+  }
+  return normalizeNumber((Number(fcf) / Number(marketCap)) * 100);
+}
+
 async function main() {
   logStep("KRX 병합 시작");
   const [dartText, basicText, valuationText, marketCapText] = await Promise.all([
@@ -298,6 +317,10 @@ async function main() {
     );
     const roe = normalizeNumber(row.roe);
     const opMargin = normalizeNumber(row.opMargin);
+    const totalBorrowings = normalizeNumber(row.totalBorrowings);
+    const cashAndEquivalents = normalizeNumber(row.cashAndEquivalents);
+    const ebitda = normalizeNumber(row.ebitda);
+    const fcf = normalizeNumber(row.fcf);
 
     return {
       ...row,
@@ -308,6 +331,8 @@ async function main() {
       pbr,
       marketCap: marketCapValue,
       dividendYield,
+      evToEbitda: computeEvToEbitda(marketCapValue, totalBorrowings, cashAndEquivalents, ebitda),
+      fcfYield: computeFcfYield(marketCapValue, fcf),
       shareholderReturn: inferShareholderReturn(row.shareholderReturn, dividendYield),
       catalyst: inferCatalyst(row.catalyst, pbr, roe, marketCapValue),
       confidence: inferConfidence(row.confidence, roe, opMargin, marketCapValue),
@@ -325,11 +350,19 @@ async function main() {
     "roe",
     "roic",
     "pbr",
+    "evToEbitda",
+    "fcfYield",
     "debtRatio",
     "opMargin",
+    "roicTrend3Y",
+    "opMarginTrend3Y",
     "interestCoverage",
     "ocfToNetIncome",
     "dividendYield",
+    "totalBorrowings",
+    "cashAndEquivalents",
+    "ebitda",
+    "fcf",
     "netCash",
     "catalyst",
     "governance",
