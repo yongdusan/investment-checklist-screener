@@ -172,7 +172,13 @@ async function main() {
     const pbr = normalizeNumber(readField(valuation, ["PBR", "주가순자산비율"]));
     const dividendYield = normalizeNumber(readField(valuation, ["배당수익률"]));
     const marketCapValue = normalizeNumber(
-      readField(marketCap, ["시가총액", "상장시가총액", "자기주식제외시가총액"]),
+      readField(marketCap, [
+        "시가총액",
+        "상장시가총액",
+        "자기주식제외시가총액",
+        "자기주식 제외 시가총액(A*B)",
+        "자기주식 제외 시가총액",
+      ]),
     );
     const roe = normalizeNumber(row.roe);
     const opMargin = normalizeNumber(row.opMargin);
