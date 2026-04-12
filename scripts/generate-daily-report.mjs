@@ -1,6 +1,6 @@
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import {
   REPORT_CONFIG,
   getReportMinScore,
@@ -175,6 +175,100 @@ async function updateHistoryIndex(reportDirPath) {
   await writeFile(resolve(reportDirPath, "index.md"), `${indexLines.join("\n")}\n`, "utf8");
 }
 
+function parsePreviousReportSummary(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const summaries = [];
+  let current = null;
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^###\s+\d+\.\s+(.+)$/);
+    if (headingMatch) {
+      if (current) {
+        summaries.push(current);
+      }
+      current = { name: headingMatch[1].trim() };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const scoreMatch = line.match(/^- 점수: (\d+)점$/);
+    if (scoreMatch) {
+      current.score = Number(scoreMatch[1]);
+      continue;
+    }
+
+    const completenessMatch = line.match(/^- 정보 충실도: (\d+)%$/);
+    if (completenessMatch) {
+      current.completeness = Number(completenessMatch[1]);
+    }
+  }
+
+  if (current) {
+    summaries.push(current);
+  }
+
+  return summaries;
+}
+
+async function loadPreviousReportSummary(reportDirPath, currentOutputPath) {
+  const entries = await readdir(reportDirPath, { withFileTypes: true });
+  const currentFileName = basename(currentOutputPath);
+  const previousFile = entries
+    .filter((entry) => entry.isFile() && /^\d{4}-\d{2}-\d{2}-daily-shortlist\.md$/.test(entry.name))
+    .map((entry) => entry.name)
+    .filter((name) => name !== currentFileName)
+    .sort((a, b) => b.localeCompare(a))[0];
+
+  if (!previousFile) {
+    return new Map();
+  }
+
+  const markdown = await readFile(resolve(reportDirPath, previousFile), "utf8");
+  const previousEntries = parsePreviousReportSummary(markdown);
+  return new Map(previousEntries.map((item, index) => [item.name, { ...item, rank: index + 1 }]));
+}
+
+function describeDataSources(stock) {
+  const automatic = [];
+  const manual = stock.overrideFields || [];
+
+  if (toNumber(stock.marketCap) !== null) automatic.push("시가총액");
+  if (toNumber(stock.per) !== null || toNumber(stock.pbr) !== null) automatic.push("밸류에이션");
+  if (toNumber(stock.roe) !== null || toNumber(stock.opMargin) !== null) automatic.push("수익성");
+  if (toNumber(stock.debtRatio) !== null || String(stock.netCash || "").trim()) automatic.push("재무안정성");
+  if (String(stock.market || "").trim() || String(stock.sector || "").trim()) automatic.push("시장/업종");
+
+  return {
+    automaticLabel: automatic.length ? automatic.join(", ") : "핵심 자동 데이터 부족",
+    manualLabel: manual.length ? manual.join(", ") : "없음",
+  };
+}
+
+function describePreviousDelta(stock, index, previousSummary) {
+  const previous = previousSummary.get(stock.name);
+  if (!previous) {
+    return "신규 진입";
+  }
+
+  const parts = [];
+  parts.push(previous.rank === index + 1 ? "순위 유지" : `${previous.rank}위 → ${index + 1}위`);
+
+  if (typeof previous.score === "number" && previous.score !== stock.score) {
+    const scoreDelta = stock.score - previous.score;
+    parts.push(`점수 ${scoreDelta > 0 ? "+" : ""}${scoreDelta}`);
+  }
+
+  if (typeof previous.completeness === "number" && previous.completeness !== stock.completeness) {
+    const completenessDelta = stock.completeness - previous.completeness;
+    parts.push(`정보 ${completenessDelta > 0 ? "+" : ""}${completenessDelta}%p`);
+  }
+
+  return parts.join(" / ");
+}
+
 async function main() {
   const csvText = await readFile(inputPath, "utf8");
   let baseStocks = parseCsv(csvText);
@@ -203,6 +297,8 @@ async function main() {
     fieldCoverage.marketCap === 0 &&
     fieldCoverage.per === 0 &&
     fieldCoverage.pbr === 0;
+  const reportDirPath = dirname(outputPath);
+  const previousSummary = await loadPreviousReportSummary(reportDirPath, outputPath);
 
   const dateLabel = new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "full",
@@ -283,16 +379,19 @@ async function main() {
   lines.push("## 상세", "");
 
   shortlist.forEach((stock, index) => {
+    const sources = describeDataSources(stock);
     lines.push(`### ${index + 1}. ${stock.name}`);
     lines.push("");
     lines.push(`- 점수: ${stock.score}점`);
     lines.push(`- 정보 충실도: ${stock.completeness}%`);
+    lines.push(`- 전일 대비: ${describePreviousDelta(stock, index, previousSummary)}`);
     lines.push(`- 시장/업종: ${stock.market || "-"} / ${stock.sector || "-"}`);
     lines.push(`- 시가총액: ${formatNumber(stock.marketCap)}`);
     lines.push(`- PER / PBR: ${stock.per || "-"} / ${stock.pbr || "-"}`);
     lines.push(`- ROE / 영업이익률: ${stock.roe || "-"} / ${stock.opMargin || "-"}`);
     lines.push(`- 부채비율 / 배당수익률: ${stock.debtRatio || "-"} / ${stock.dividendYield || "-"}`);
     lines.push(`- 촉매 / 확신도: ${stock.catalyst || "-"} / ${stock.confidence || "-"}`);
+    lines.push(`- 데이터 출처: 자동(${sources.automaticLabel}) / 수동(${sources.manualLabel})`);
     if (stock.overrideFields?.length) {
       lines.push(`- 수동 오버레이: ${stock.overrideFields.join(", ")}`);
     }
@@ -310,9 +409,9 @@ async function main() {
     lines.push("");
   });
 
-  await mkdir(dirname(outputPath), { recursive: true });
+  await mkdir(reportDirPath, { recursive: true });
   await writeFile(outputPath, `${lines.join("\n")}\n`, "utf8");
-  await updateHistoryIndex(dirname(outputPath));
+  await updateHistoryIndex(reportDirPath);
   console.log(`완료: ${outputPath}`);
 }
 
