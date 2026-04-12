@@ -155,6 +155,16 @@ function formatNumber(value) {
   return num === null ? "-" : new Intl.NumberFormat("ko-KR").format(num);
 }
 
+function fmt(value, digits = 2) {
+  const num = toNumber(value);
+  return num === null ? "-" : num.toFixed(digits);
+}
+
+function fmtMktCap(value) {
+  const num = toNumber(value);
+  return num === null ? "-" : `${Math.round(num / 100000000).toLocaleString("ko-KR")}억원`;
+}
+
 function normalizeCode(value) {
   return String(value ?? "")
     .replace(/[^\d]/g, "")
@@ -524,12 +534,12 @@ async function main() {
     lines.push(`- 정보 충실도: ${stock.completeness}%`);
     lines.push(`- 전일 대비: ${describePreviousDelta(stock, index, previousSummary)}`);
     lines.push(`- 시장/업종: ${stock.market || "-"} / ${stock.sector || "-"}`);
-    lines.push(`- 시가총액: ${formatNumber(stock.marketCap)}`);
-    lines.push(`- PER / PBR / EV-EBITDA / FCF Yield: ${stock.per || "-"} / ${stock.pbr || "-"} / ${stock.evToEbitda || "-"} / ${stock.fcfYield || "-"}`);
-    lines.push(`- ROE / ROIC / 영업이익률: ${stock.roe || "-"} / ${stock.roic || "-"} / ${stock.opMargin || "-"}`);
-    lines.push(`- 3년 추세(ROIC / 영업이익률): ${stock.roicTrend3Y || "-"} / ${stock.opMarginTrend3Y || "-"}`);
-    lines.push(`- 이자보상배율 / 현금전환율: ${stock.interestCoverage || "-"} / ${stock.ocfToNetIncome || "-"}`);
-    lines.push(`- 부채비율 / 배당수익률: ${stock.debtRatio || "-"} / ${stock.dividendYield || "-"}`);
+    lines.push(`- 시가총액: ${fmtMktCap(stock.marketCap)}`);
+    lines.push(`- PER / PBR / EV-EBITDA / FCF Yield: ${fmt(stock.per)} / ${fmt(stock.pbr)} / ${fmt(stock.evToEbitda)} / ${fmt(stock.fcfYield)}`);
+    lines.push(`- ROE / ROIC / 영업이익률: ${fmt(stock.roe)} / ${fmt(stock.roic)} / ${fmt(stock.opMargin)}`);
+    lines.push(`- 3년 추세(ROIC / 영업이익률): ${fmt(stock.roicTrend3Y)} / ${fmt(stock.opMarginTrend3Y)}`);
+    lines.push(`- 이자보상배율 / 현금전환율: ${fmt(stock.interestCoverage)} / ${fmt(stock.ocfToNetIncome)}`);
+    lines.push(`- 부채비율 / 배당수익률: ${fmt(stock.debtRatio, 0)} / ${fmt(stock.dividendYield)}`);
     lines.push(`- 촉매 / 주주환원 / 확신도: ${stock.catalyst || "-"} / ${stock.shareholderReturn || "-"} / ${stock.confidence || "-"}`);
     lines.push(
       `- 체크리스트: valueUp=${stock.valueUp || "-"}, buyback=${stock.buyback || "-"}, treasuryCancellation=${stock.treasuryCancellation || "-"}, payoutRaise=${stock.payoutRaise || "-"}, assetSale=${stock.assetSale || "-"}, spinOff=${stock.spinOff || "-"}, insiderBuying=${stock.insiderBuying || "-"}, foreignOwnershipRebound=${stock.foreignOwnershipRebound || "-"}, coverageInitiation=${stock.coverageInitiation || "-"}`,
