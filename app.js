@@ -15,41 +15,216 @@ const universeUrl = document.querySelector("#universe-url");
 const csvFileInput = document.querySelector("#csv-file");
 
 function renderPrinciples() {
-  principleList.innerHTML = principles
-    .map(
-      (item) => `
-        <article class="principle-item">
-          <div class="principle-title">
-            <span>${item.title}</span>
-            <span class="badge">${item.weight}점</span>
-          </div>
-          <p>${item.description}</p>
-        </article>
-      `,
-    )
-    .join("");
+  principleList.replaceChildren(
+    ...principles.map((item) => {
+      const article = document.createElement("article");
+      article.className = "principle-item";
+
+      const title = document.createElement("div");
+      title.className = "principle-title";
+
+      const name = document.createElement("span");
+      name.textContent = item.title;
+
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = `${item.weight}점`;
+
+      title.append(name, badge);
+
+      const description = document.createElement("p");
+      description.textContent = item.description;
+
+      article.append(title, description);
+      return article;
+    }),
+  );
 }
 
 function parseCsv(text) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const rows = [];
+  let current = "";
+  let row = [];
+  let insideQuotes = false;
 
-  if (lines.length < 2) {
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !insideQuotes) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !insideQuotes) {
+      if (char === "\r" && next === "\n") {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((cell) => String(cell).trim() !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some((cell) => String(cell).trim() !== "")) {
+    rows.push(row);
+  }
+
+  if (insideQuotes) {
+    throw new Error("닫히지 않은 따옴표가 있는 CSV입니다.");
+  }
+
+  if (rows.length < 2) {
     return [];
   }
 
-  const headers = lines[0].split(",").map((header) => header.trim());
+  const [headers, ...dataRows] = rows;
+  const normalizedHeaders = headers.map((header) =>
+    String(header).replace(/^\uFEFF/, "").trim(),
+  );
 
-  return lines.slice(1).map((line) => {
-    const cells = line.split(",").map((cell) => cell.trim());
+  return dataRows.map((cells) => {
     const row = {};
-    headers.forEach((header, index) => {
-      row[header] = cells[index] ?? "";
+    normalizedHeaders.forEach((header, index) => {
+      row[header] = String(cells[index] ?? "").trim();
     });
     return row;
   });
+}
+
+function createMetric(label, value) {
+  const item = document.createElement("div");
+  item.className = "metric";
+
+  const metricLabel = document.createElement("span");
+  metricLabel.className = "metric-label";
+  metricLabel.textContent = label;
+
+  const metricValue = document.createElement("span");
+  metricValue.className = "metric-value";
+  metricValue.textContent = value;
+
+  item.append(metricLabel, metricValue);
+  return item;
+}
+
+function createBreakdownItem(item) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "breakdown-item";
+
+  const row = document.createElement("div");
+  row.className = "breakdown-row";
+
+  const title = document.createElement("span");
+  title.textContent = item.shortTitle;
+
+  const score = document.createElement("strong");
+  score.textContent = item.available ? `${item.points}/${item.weight}` : `데이터 없음 / ${item.weight}`;
+
+  row.append(title, score);
+
+  const description = document.createElement("p");
+  description.textContent = item.summary;
+
+  wrapper.append(row, description);
+  return wrapper;
+}
+
+function createReasonList(reasons) {
+  const list = document.createElement("ul");
+  list.className = "reason-list";
+  reasons.forEach((reason) => {
+    const item = document.createElement("li");
+    item.textContent = reason;
+    list.append(item);
+  });
+  return list;
+}
+
+function createShortCard(stock, index) {
+  const article = document.createElement("article");
+  article.className = "short-card";
+
+  const rank = document.createElement("div");
+  rank.className = "short-rank";
+  rank.textContent = `Top ${index + 1}`;
+
+  const title = document.createElement("h3");
+  title.textContent = `${stock.name || "이름 없음"} · ${stock.score}점`;
+
+  const summaryLine = document.createElement("p");
+  summaryLine.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} / 정보 충실도 ${stock.completeness}% / 촉매 ${stock.catalyst || "미입력"}`;
+
+  article.append(rank, title, summaryLine);
+  return article;
+}
+
+function createStockCard(stock) {
+  const article = document.createElement("article");
+  article.className = "stock-card";
+
+  const header = document.createElement("div");
+  header.className = "stock-card-header";
+
+  const titleWrap = document.createElement("div");
+  const title = document.createElement("h3");
+  title.textContent = stock.name || "이름 없음";
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} · 정보 충실도 ${stock.completeness}% · 확신도 ${stock.confidence || "미입력"}`;
+  titleWrap.append(title, meta);
+
+  const score = document.createElement("div");
+  score.className = `score-pill ${scoreClass(stock.score)}`.trim();
+  score.textContent = `${stock.score}점`;
+
+  header.append(titleWrap, score);
+
+  const metrics = document.createElement("div");
+  metrics.className = "metrics-grid";
+  metrics.append(
+    createMetric("시가총액", stock.marketCap || "-"),
+    createMetric("PER", stock.per || "-"),
+    createMetric("ROE", `${stock.roe || "-"}%`),
+    createMetric("PBR", stock.pbr || "-"),
+    createMetric("부채비율", `${stock.debtRatio || "-"}%`),
+    createMetric("영업이익률", `${stock.opMargin || "-"}%`),
+  );
+
+  const breakdownBlock = document.createElement("div");
+  breakdownBlock.className = "breakdown-block";
+
+  const breakdownTitle = document.createElement("div");
+  breakdownTitle.className = "breakdown-title";
+  breakdownTitle.textContent = "항목별 점수";
+
+  const breakdownList = document.createElement("div");
+  breakdownList.className = "breakdown-list";
+  breakdownList.append(...stock.breakdown.map(createBreakdownItem));
+
+  breakdownBlock.append(breakdownTitle, breakdownList);
+
+  article.append(header, metrics, createReasonList(stock.reasons), breakdownBlock);
+  return article;
 }
 
 function passesFilters(stock) {
@@ -84,7 +259,15 @@ function scoreClass(score) {
 }
 
 function renderResults() {
-  const stocks = parseCsv(csvInput.value).map(scoreStock).sort((a, b) => b.score - a.score);
+  let stocks = [];
+  try {
+    stocks = parseCsv(csvInput.value).map(scoreStock).sort((a, b) => b.score - a.score);
+  } catch (error) {
+    shortlist.replaceChildren();
+    results.replaceChildren();
+    summary.textContent = `CSV 파싱에 실패했습니다. 따옴표나 쉼표 형식을 확인해 주세요. (${error.message})`;
+    return;
+  }
   const filtered = stocks.filter(passesFilters);
   const topN = Number(topNFilter.value);
   const shortlisted = filtered.slice(0, topN);
@@ -92,70 +275,16 @@ function renderResults() {
   summary.textContent = `전체 ${stocks.length}개 중 ${filtered.length}개가 현재 필터를 통과했고, 그중 상위 ${shortlisted.length}개를 우선 후보로 보여줍니다. 점수는 입력된 정보 범위 안에서 계산한 적합도이며, 정보 충실도도 함께 확인하는 편이 좋습니다.`;
 
   if (filtered.length === 0) {
-    shortlist.innerHTML = "";
-    results.innerHTML = `<div class="empty-state">통과한 종목이 없습니다. 최소 점수를 낮추거나 확신도, 촉매 필터를 완화해 보세요.</div>`;
+    shortlist.replaceChildren();
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.textContent = "통과한 종목이 없습니다. 최소 점수를 낮추거나 확신도, 촉매 필터를 완화해 보세요.";
+    results.replaceChildren(emptyState);
     return;
   }
 
-  shortlist.innerHTML = shortlisted
-    .map(
-      (stock, index) => `
-        <article class="short-card">
-          <div class="short-rank">Top ${index + 1}</div>
-          <h3>${stock.name || "이름 없음"} · ${stock.score}점</h3>
-          <p>${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} / 정보 충실도 ${stock.completeness}% / 촉매 ${stock.catalyst || "미입력"}</p>
-        </article>
-      `,
-    )
-    .join("");
-
-  results.innerHTML = shortlisted
-    .map(
-      (stock) => `
-        <article class="stock-card">
-          <div class="stock-card-header">
-            <div>
-              <h3>${stock.name || "이름 없음"}</h3>
-              <div class="meta">${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} · 정보 충실도 ${stock.completeness}% · 확신도 ${stock.confidence || "미입력"}</div>
-            </div>
-            <div class="score-pill ${scoreClass(stock.score)}">${stock.score}점</div>
-          </div>
-
-          <div class="metrics-grid">
-            <div class="metric"><span class="metric-label">시가총액</span><span class="metric-value">${stock.marketCap || "-"}</span></div>
-            <div class="metric"><span class="metric-label">PER</span><span class="metric-value">${stock.per || "-"}</span></div>
-            <div class="metric"><span class="metric-label">ROE</span><span class="metric-value">${stock.roe || "-"}%</span></div>
-            <div class="metric"><span class="metric-label">PBR</span><span class="metric-value">${stock.pbr || "-"}</span></div>
-            <div class="metric"><span class="metric-label">부채비율</span><span class="metric-value">${stock.debtRatio || "-"}%</span></div>
-            <div class="metric"><span class="metric-label">영업이익률</span><span class="metric-value">${stock.opMargin || "-"}%</span></div>
-          </div>
-
-          <ul class="reason-list">
-            ${stock.reasons.map((reason) => `<li>${reason}</li>`).join("")}
-          </ul>
-
-          <div class="breakdown-block">
-            <div class="breakdown-title">항목별 점수</div>
-            <div class="breakdown-list">
-              ${stock.breakdown
-                .map(
-                  (item) => `
-                    <div class="breakdown-item">
-                      <div class="breakdown-row">
-                        <span>${item.shortTitle}</span>
-                        <strong>${item.available ? `${item.points}/${item.weight}` : `데이터 없음 / ${item.weight}`}</strong>
-                      </div>
-                      <p>${item.summary}</p>
-                    </div>
-                  `,
-                )
-                .join("")}
-            </div>
-          </div>
-        </article>
-      `,
-    )
-    .join("");
+  shortlist.replaceChildren(...shortlisted.map(createShortCard));
+  results.replaceChildren(...shortlisted.map(createStockCard));
 }
 
 document.querySelector("#run-screening").addEventListener("click", renderResults);

@@ -35,6 +35,7 @@ function runNode(script, args) {
 
 async function main() {
   runNode("./scripts/build-dart-universe.mjs", [String(year), String(limit)]);
+  runNode("./scripts/validate-universe.mjs", [dartOutput, "latest"]);
 
   const hasBasic = await exists("./data/krx-basic.csv");
   const hasValuation = await exists("./data/krx-valuation.csv");
@@ -49,6 +50,7 @@ async function main() {
       "./data/krx-marketcap.csv",
       enrichedOutput,
     ]);
+    runNode("./scripts/validate-universe.mjs", [enrichedOutput, "enriched"]);
     reportInput = enrichedOutput;
     console.log("KRX valuation/marketcap CSV를 함께 사용해 universe.enriched.csv를 생성합니다.");
   } else {

@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: "0 22 * * 6"
 
+concurrency:
+  group: investment-checklist-report-main
+  cancel-in-progress: false
+
 jobs:
   refresh-and-publish:
     runs-on: ubuntu-latest

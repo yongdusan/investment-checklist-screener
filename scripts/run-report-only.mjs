@@ -97,6 +97,10 @@ async function main() {
   const hasLatest = await exists(latestUniverse);
 
   if (hasEnriched) {
+    runNode("./scripts/validate-universe.mjs", [
+      enrichedUniverse,
+      "enriched",
+    ]);
     runNode("./scripts/generate-daily-report.mjs", [
       enrichedUniverse,
       reportOutput,
@@ -107,6 +111,10 @@ async function main() {
   }
 
   if (hasLatest) {
+    runNode("./scripts/validate-universe.mjs", [
+      latestUniverse,
+      "latest",
+    ]);
     runNode("./scripts/generate-daily-report.mjs", [
       latestUniverse,
       reportOutput,
