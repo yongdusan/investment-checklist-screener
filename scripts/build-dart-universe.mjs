@@ -216,6 +216,24 @@ function computeIndicators(accountList) {
   const equity = pickAccountAmount(accountList, "BS", ["자본총계"]);
   const previousEquity = pickAccountAmount(accountList, "BS", ["자본총계"], "frmtrm_amount");
   const liabilities = pickAccountAmount(accountList, "BS", ["부채총계"]);
+  const cashAndEquivalents = pickAccountAmount(accountList, "BS", [
+    "현금및현금성자산",
+    "현금및현금등가물",
+    "현금및현금등가물합계",
+  ]);
+  const shortTermBorrowings = pickAccountAmount(accountList, "BS", [
+    "단기차입금",
+    "단기금융부채",
+    "유동성장기부채",
+    "유동성사채",
+  ]);
+  const longTermBorrowings = pickAccountAmount(accountList, "BS", [
+    "장기차입금",
+    "사채",
+    "장기금융부채",
+    "장기리스부채",
+    "비유동리스부채",
+  ]);
   const revenue =
     pickAccountAmount(accountList, "IS", ["매출액"], "thstrm_add_amount") ??
     pickAccountAmount(accountList, "IS", ["영업수익"], "thstrm_add_amount");
@@ -231,12 +249,57 @@ function computeIndicators(accountList) {
     ["당기순이익", "당기순이익손실", "분기순이익", "반기순이익"],
     "thstrm_add_amount",
   );
+  const profitBeforeTax = pickAccountAmount(
+    accountList,
+    "IS",
+    ["법인세비용차감전순이익", "법인세비용차감전계속사업이익", "계속사업법인세비용차감전순이익"],
+    "thstrm_add_amount",
+  );
+  const incomeTaxExpense = pickAccountAmount(
+    accountList,
+    "IS",
+    ["법인세비용", "법인세비용수익", "당기법인세부담액"],
+    "thstrm_add_amount",
+  );
+  const interestExpense = pickAccountAmount(
+    accountList,
+    "IS",
+    ["이자비용", "금융원가", "이자비용및기타금융비용", "금융비용"],
+    "thstrm_add_amount",
+  );
+  const operatingCashFlow = pickAccountAmount(accountList, "CF", [
+    "영업활동으로인한현금흐름",
+    "영업활동현금흐름",
+    "영업활동으로부터의순현금유입",
+    "영업활동으로인한순현금흐름",
+  ]);
 
   const averageEquity =
     equity !== null && previousEquity !== null ? (equity + previousEquity) / 2 : equity;
+  const effectiveTaxRate =
+    incomeTaxExpense !== null && profitBeforeTax !== null && profitBeforeTax !== 0
+      ? Math.min(0.35, Math.max(0, Math.abs(incomeTaxExpense / profitBeforeTax)))
+      : 0.25;
+  const totalBorrowings =
+    (shortTermBorrowings ?? 0) + (longTermBorrowings ?? 0) > 0
+      ? (shortTermBorrowings ?? 0) + (longTermBorrowings ?? 0)
+      : null;
+  const investedCapital =
+    operatingIncome !== null && equity !== null
+      ? Math.max(
+          1,
+          totalBorrowings !== null
+            ? equity + totalBorrowings - (cashAndEquivalents ?? 0)
+            : equity + (liabilities ?? 0) - (cashAndEquivalents ?? 0),
+        )
+      : null;
   const roe =
     netIncome !== null && averageEquity && averageEquity !== 0
       ? ((netIncome / averageEquity) * 100).toFixed(2)
+      : "";
+  const roic =
+    operatingIncome !== null && investedCapital
+      ? (((operatingIncome * (1 - effectiveTaxRate)) / investedCapital) * 100).toFixed(2)
       : "";
   const opMargin =
     operatingIncome !== null && revenue && revenue !== 0
@@ -246,11 +309,22 @@ function computeIndicators(accountList) {
     liabilities !== null && equity && equity !== 0
       ? ((liabilities / equity) * 100).toFixed(2)
       : "";
+  const interestCoverage =
+    operatingIncome !== null && interestExpense !== null && interestExpense !== 0
+      ? (operatingIncome / Math.abs(interestExpense)).toFixed(2)
+      : "";
+  const ocfToNetIncome =
+    operatingCashFlow !== null && netIncome !== null && netIncome !== 0
+      ? (operatingCashFlow / netIncome).toFixed(2)
+      : "";
 
   return {
     roe: normalizeNumber(roe),
+    roic: normalizeNumber(roic),
     opMargin: normalizeNumber(opMargin),
     debtRatio: normalizeNumber(debtRatio),
+    interestCoverage: normalizeNumber(interestCoverage),
+    ocfToNetIncome: normalizeNumber(ocfToNetIncome),
   };
 }
 
@@ -373,9 +447,17 @@ async function fetchIndicators(corp) {
         continue;
       }
 
-      const { roe, opMargin, debtRatio } = computeIndicators(accountList);
+      const { roe, roic, opMargin, debtRatio, interestCoverage, ocfToNetIncome } =
+        computeIndicators(accountList);
 
-      if (roe === "" && opMargin === "" && debtRatio === "") {
+      if (
+        roe === "" &&
+        roic === "" &&
+        opMargin === "" &&
+        debtRatio === "" &&
+        interestCoverage === "" &&
+        ocfToNetIncome === ""
+      ) {
         attempts.push(`${year}/${reportCode}:account match missed`);
         continue;
       }
@@ -388,12 +470,26 @@ async function fetchIndicators(corp) {
         sector: corp.sector || "",
         per: "",
         roe,
+        roic,
         pbr: "",
         debtRatio,
         opMargin,
+        interestCoverage,
+        ocfToNetIncome,
+        dividendYield: "",
         netCash: "",
         catalyst: inferCatalyst(Number(roe || 0), debtRatio),
         governance: "",
+        shareholderReturn: "",
+        valueUp: "",
+        buyback: "",
+        treasuryCancellation: "",
+        payoutRaise: "",
+        assetSale: "",
+        spinOff: "",
+        insiderBuying: "",
+        foreignOwnershipRebound: "",
+        coverageInitiation: "",
         confidence: inferConfidence(Number(roe || 0), Number(opMargin || 0), debtRatio),
         source: `opendart-acnt:${year}:${reportCode}`,
       };
@@ -450,7 +546,17 @@ async function main() {
   }
   const rows = await mapWithConcurrency(selected, fetchIndicators);
   const successful = rows.filter(
-    (row) => row && !row.error && (row.roe !== "" || row.debtRatio !== "" || row.opMargin !== ""),
+    (row) =>
+      row &&
+      !row.error &&
+      (
+        row.roe !== "" ||
+        row.roic !== "" ||
+        row.debtRatio !== "" ||
+        row.opMargin !== "" ||
+        row.interestCoverage !== "" ||
+        row.ocfToNetIncome !== ""
+      ),
   );
   const failures = rows.filter((row) => row && row.error);
 
@@ -485,12 +591,26 @@ async function main() {
     "sector",
     "per",
     "roe",
+    "roic",
     "pbr",
     "debtRatio",
     "opMargin",
+    "interestCoverage",
+    "ocfToNetIncome",
+    "dividendYield",
     "netCash",
     "catalyst",
     "governance",
+    "shareholderReturn",
+    "valueUp",
+    "buyback",
+    "treasuryCancellation",
+    "payoutRaise",
+    "assetSale",
+    "spinOff",
+    "insiderBuying",
+    "foreignOwnershipRebound",
+    "coverageInitiation",
     "confidence",
     "source",
   ];

@@ -1,5 +1,5 @@
-stockCode,name,catalyst,governance,confidence,netCash,market,sector,note
-234080,JW생명과학보통주,medium,,high,,,,실적 추세와 밸류 재평가 여부를 계속 추적
-007700,F&F홀딩스,medium,medium,medium,,,,지주 구조와 저평가 지속 여부를 점검
-008260,NI스틸보통주,medium,,medium,,,,저평가 지속성과 업황 민감도를 함께 체크
-001060,JW중외제약보통주,strong,medium,high,,,,핵심 파이프라인과 실적 개선이 재평가 계기가 되는지 추적
+stockCode,name,catalyst,governance,confidence,shareholderReturn,netCash,market,sector,valueUp,buyback,treasuryCancellation,payoutRaise,assetSale,spinOff,insiderBuying,foreignOwnershipRebound,coverageInitiation,note
+234080,JW생명과학보통주,medium,,high,,,,,false,false,false,false,false,false,false,false,false,실적 추세와 밸류 재평가 여부를 계속 추적
+007700,F&F홀딩스,medium,medium,medium,medium,,,,false,false,false,false,false,false,false,false,false,지주 구조와 저평가 지속 여부를 점검
+008260,NI스틸보통주,medium,,medium,,,,,false,false,false,false,false,false,false,false,false,저평가 지속성과 업황 민감도를 함께 체크
+001060,JW중외제약보통주,strong,medium,high,,,,,false,false,false,false,false,false,false,false,false,핵심 파이프라인과 실적 개선이 재평가 계기가 되는지 추적

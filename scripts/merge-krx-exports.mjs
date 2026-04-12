@@ -128,6 +128,19 @@ function inferConfidence(existing, roe, opMargin, marketCap) {
   return "";
 }
 
+function inferShareholderReturn(existing, dividendYield) {
+  if (existing) {
+    return existing;
+  }
+  if (dividendYield !== "" && dividendYield >= 4) {
+    return "strong";
+  }
+  if (dividendYield !== "" && dividendYield >= 2) {
+    return "medium";
+  }
+  return "";
+}
+
 async function main() {
   const [dartText, basicText, valuationText, marketCapText] = await Promise.all([
     readFile(dartPath, "utf8"),
@@ -192,6 +205,7 @@ async function main() {
       pbr,
       marketCap: marketCapValue,
       dividendYield,
+      shareholderReturn: inferShareholderReturn(row.shareholderReturn, dividendYield),
       catalyst: inferCatalyst(row.catalyst, pbr, roe, marketCapValue),
       confidence: inferConfidence(row.confidence, roe, opMargin, marketCapValue),
     };
@@ -206,13 +220,26 @@ async function main() {
     "marketCap",
     "per",
     "roe",
+    "roic",
     "pbr",
     "debtRatio",
     "opMargin",
+    "interestCoverage",
+    "ocfToNetIncome",
     "dividendYield",
     "netCash",
     "catalyst",
     "governance",
+    "shareholderReturn",
+    "valueUp",
+    "buyback",
+    "treasuryCancellation",
+    "payoutRaise",
+    "assetSale",
+    "spinOff",
+    "insiderBuying",
+    "foreignOwnershipRebound",
+    "coverageInitiation",
     "confidence",
     "source",
   ];

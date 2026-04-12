@@ -7,7 +7,7 @@ import {
   getReportTopN,
   getSeoulDate,
 } from "../config/reporting.mjs";
-import { principles, scoreStock, summarizeShortlistFailure, toNumber } from "../lib/scoring.mjs";
+import { principles, scoreStocks, summarizeShortlistFailure, toNumber } from "../lib/scoring.mjs";
 
 const inputPath = resolve(process.argv[2] || REPORT_CONFIG.enrichedUniversePath);
 const outputPath = resolve(
@@ -124,7 +124,24 @@ function mergeManualOverrides(stocks, overrideRows) {
     const overrideFields = [];
     const next = { ...stock };
 
-    for (const field of ["catalyst", "governance", "confidence", "netCash", "market", "sector"]) {
+    for (const field of [
+      "catalyst",
+      "governance",
+      "confidence",
+      "netCash",
+      "market",
+      "sector",
+      "shareholderReturn",
+      "valueUp",
+      "buyback",
+      "treasuryCancellation",
+      "payoutRaise",
+      "assetSale",
+      "spinOff",
+      "insiderBuying",
+      "foreignOwnershipRebound",
+      "coverageInitiation",
+    ]) {
       const value = String(override[field] ?? "").trim();
       if (value) {
         next[field] = value;
@@ -237,8 +254,22 @@ function describeDataSources(stock) {
 
   if (toNumber(stock.marketCap) !== null) automatic.push("시가총액");
   if (toNumber(stock.per) !== null || toNumber(stock.pbr) !== null) automatic.push("밸류에이션");
-  if (toNumber(stock.roe) !== null || toNumber(stock.opMargin) !== null) automatic.push("수익성");
-  if (toNumber(stock.debtRatio) !== null || String(stock.netCash || "").trim()) automatic.push("재무안정성");
+  if (
+    toNumber(stock.roe) !== null ||
+    toNumber(stock.roic) !== null ||
+    toNumber(stock.opMargin) !== null ||
+    toNumber(stock.ocfToNetIncome) !== null
+  ) {
+    automatic.push("수익성");
+  }
+  if (
+    toNumber(stock.debtRatio) !== null ||
+    toNumber(stock.interestCoverage) !== null ||
+    String(stock.netCash || "").trim()
+  ) {
+    automatic.push("재무안정성");
+  }
+  if (toNumber(stock.dividendYield) !== null || String(stock.shareholderReturn || "").trim()) automatic.push("주주환원");
   if (String(stock.market || "").trim() || String(stock.sector || "").trim()) automatic.push("시장/업종");
 
   return {
@@ -282,14 +313,20 @@ async function main() {
     appliedOverrides = merged.appliedCount;
   }
 
-  const stocks = baseStocks.map(scoreStock).sort((a, b) => b.score - a.score);
+  const stocks = scoreStocks(baseStocks).sort((a, b) => b.score - a.score);
   const shortlist = stocks.filter((stock) => stock.score >= minScore).slice(0, topN);
   const fieldCoverage = {
     marketCap: stocks.filter((stock) => toNumber(stock.marketCap) !== null).length,
     per: stocks.filter((stock) => toNumber(stock.per) !== null).length,
     pbr: stocks.filter((stock) => toNumber(stock.pbr) !== null).length,
+    roic: stocks.filter((stock) => toNumber(stock.roic) !== null).length,
+    interestCoverage: stocks.filter((stock) => toNumber(stock.interestCoverage) !== null).length,
+    ocfToNetIncome: stocks.filter((stock) => toNumber(stock.ocfToNetIncome) !== null).length,
     market: stocks.filter((stock) => String(stock.market || "").trim()).length,
     sector: stocks.filter((stock) => String(stock.sector || "").trim()).length,
+    shareholderReturn: stocks.filter(
+      (stock) => String(stock.shareholderReturn || "").trim() || toNumber(stock.dividendYield) !== null,
+    ).length,
   };
   const usesLatestUniverse = inputPath.endsWith("universe.latest.csv");
   const missingValuationData =
@@ -324,6 +361,10 @@ async function main() {
     `- 시가총액 데이터 채워짐: ${fieldCoverage.marketCap}/${stocks.length}`,
     `- PER 데이터 채워짐: ${fieldCoverage.per}/${stocks.length}`,
     `- PBR 데이터 채워짐: ${fieldCoverage.pbr}/${stocks.length}`,
+    `- ROIC 데이터 채워짐: ${fieldCoverage.roic}/${stocks.length}`,
+    `- 이자보상배율 데이터 채워짐: ${fieldCoverage.interestCoverage}/${stocks.length}`,
+    `- 현금전환율 데이터 채워짐: ${fieldCoverage.ocfToNetIncome}/${stocks.length}`,
+    `- 주주환원 데이터 채워짐: ${fieldCoverage.shareholderReturn}/${stocks.length}`,
     `- 수동 오버레이 반영 종목 수: ${appliedOverrides}/${stocks.length}`,
     ``,
   ];
@@ -388,9 +429,13 @@ async function main() {
     lines.push(`- 시장/업종: ${stock.market || "-"} / ${stock.sector || "-"}`);
     lines.push(`- 시가총액: ${formatNumber(stock.marketCap)}`);
     lines.push(`- PER / PBR: ${stock.per || "-"} / ${stock.pbr || "-"}`);
-    lines.push(`- ROE / 영업이익률: ${stock.roe || "-"} / ${stock.opMargin || "-"}`);
+    lines.push(`- ROE / ROIC / 영업이익률: ${stock.roe || "-"} / ${stock.roic || "-"} / ${stock.opMargin || "-"}`);
+    lines.push(`- 이자보상배율 / 현금전환율: ${stock.interestCoverage || "-"} / ${stock.ocfToNetIncome || "-"}`);
     lines.push(`- 부채비율 / 배당수익률: ${stock.debtRatio || "-"} / ${stock.dividendYield || "-"}`);
-    lines.push(`- 촉매 / 확신도: ${stock.catalyst || "-"} / ${stock.confidence || "-"}`);
+    lines.push(`- 촉매 / 주주환원 / 확신도: ${stock.catalyst || "-"} / ${stock.shareholderReturn || "-"} / ${stock.confidence || "-"}`);
+    lines.push(
+      `- 체크리스트: valueUp=${stock.valueUp || "-"}, buyback=${stock.buyback || "-"}, treasuryCancellation=${stock.treasuryCancellation || "-"}, payoutRaise=${stock.payoutRaise || "-"}, assetSale=${stock.assetSale || "-"}, spinOff=${stock.spinOff || "-"}, insiderBuying=${stock.insiderBuying || "-"}, foreignOwnershipRebound=${stock.foreignOwnershipRebound || "-"}, coverageInitiation=${stock.coverageInitiation || "-"}`,
+    );
     lines.push(`- 데이터 출처: 자동(${sources.automaticLabel}) / 수동(${sources.manualLabel})`);
     if (stock.overrideFields?.length) {
       lines.push(`- 수동 오버레이: ${stock.overrideFields.join(", ")}`);

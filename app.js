@@ -1,4 +1,4 @@
-import { principles, scoreStock } from "./lib/scoring.mjs";
+import { principles, scoreStocks } from "./lib/scoring.mjs";
 
 const sampleCsv = document.querySelector("#csv-input").value.trim();
 const principleList = document.querySelector("#principle-list");
@@ -193,7 +193,7 @@ function createShortCard(stock, index) {
   title.textContent = `${stock.name || "이름 없음"} · ${stock.score}점`;
 
   const summaryLine = document.createElement("p");
-  summaryLine.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} / 촉매 ${stock.catalyst || "미입력"}`;
+  summaryLine.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} / 촉매 ${stock.catalyst || "미입력"} / 환원 ${stock.shareholderReturn || "미입력"}`;
 
   article.append(topRow, title, summaryLine);
 
@@ -224,7 +224,7 @@ function createStockCard(stock) {
 
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} · 확신도 ${stock.confidence || "미입력"}`;
+  meta.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} · 주주환원 ${stock.shareholderReturn || "미입력"} · 확신도 ${stock.confidence || "미입력"}`;
 
   const titleMetaRow = document.createElement("div");
   titleMetaRow.className = "title-meta-row";
@@ -244,9 +244,13 @@ function createStockCard(stock) {
     createMetric("시가총액", stock.marketCap || "-"),
     createMetric("PER", stock.per || "-"),
     createMetric("ROE", `${stock.roe || "-"}%`),
+    createMetric("ROIC", `${stock.roic || "-"}%`),
     createMetric("PBR", stock.pbr || "-"),
     createMetric("부채비율", `${stock.debtRatio || "-"}%`),
     createMetric("영업이익률", `${stock.opMargin || "-"}%`),
+    createMetric("이자보상배율", stock.interestCoverage || "-"),
+    createMetric("현금전환율", stock.ocfToNetIncome || "-"),
+    createMetric("주주환원", stock.shareholderReturn || "-"),
   );
 
   const breakdownBlock = document.createElement("div");
@@ -285,7 +289,12 @@ function passesFilters(stock) {
   if (
     catalystFilter.value === "yes" &&
     !["strong", "medium"].includes(stock.raw.catalyst) &&
-    !["strong", "medium"].includes(stock.raw.governance)
+    !["strong", "medium"].includes(stock.raw.governance) &&
+    !stock.raw.valueUp &&
+    !stock.raw.assetSale &&
+    !stock.raw.spinOff &&
+    !stock.raw.coverageInitiation &&
+    !stock.raw.foreignOwnershipRebound
   ) {
     return false;
   }
@@ -310,7 +319,7 @@ function scoreClass(score) {
 function renderResults() {
   let stocks = [];
   try {
-    stocks = parseCsv(csvInput.value).map(scoreStock).sort((a, b) => b.score - a.score);
+    stocks = scoreStocks(parseCsv(csvInput.value)).sort((a, b) => b.score - a.score);
   } catch (error) {
     shortlist.replaceChildren();
     results.replaceChildren();

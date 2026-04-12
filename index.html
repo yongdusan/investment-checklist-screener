@@ -71,16 +71,16 @@
             <label for="csv-input">CSV 입력</label>
             <p class="help">
               헤더 예시:
-              <code>name,market,sector,marketCap,per,roe,pbr,debtRatio,opMargin,dividendYield,netCash,catalyst,governance,confidence</code>
+              <code>name,market,sector,marketCap,per,roe,roic,pbr,debtRatio,opMargin,interestCoverage,ocfToNetIncome,dividendYield,shareholderReturn,netCash,catalyst,governance,confidence</code>
             </p>
             <textarea
               id="csv-input"
               spellcheck="false"
-            >name,market,sector,marketCap,per,roe,pbr,debtRatio,opMargin,dividendYield,netCash,catalyst,governance,confidence
-메리츠금융지주,KOSPI,금융,21000000000000,6.2,24.5,1.35,82,28,5.2,true,strong,strong,high
-현금부자산주A,KOSDAQ,산업재,480000000000,5.8,14.2,0.55,38,11,2.1,true,medium,medium,medium
-저PER하지만부진B,KOSPI,소비재,390000000000,4.1,6.8,0.48,145,3,1.4,false,weak,weak,low
-고ROE성장주C,KOSDAQ,IT,1200000000000,11.4,22.1,2.2,52,18,0.8,false,medium,medium,medium</textarea>
+            >name,market,sector,marketCap,per,roe,roic,pbr,debtRatio,opMargin,interestCoverage,ocfToNetIncome,dividendYield,shareholderReturn,netCash,catalyst,governance,confidence,valueUp,buyback,treasuryCancellation,payoutRaise,assetSale,spinOff,insiderBuying,foreignOwnershipRebound,coverageInitiation
+메리츠금융지주,KOSPI,금융,21000000000000,6.2,24.5,18.8,1.35,82,28,9.4,1.12,5.2,strong,true,strong,strong,high,true,true,true,true,false,false,false,true,true
+현금부자산주A,KOSDAQ,산업재,480000000000,5.8,14.2,12.4,0.55,38,11,6.1,1.04,2.1,medium,true,medium,medium,medium,false,true,false,false,false,false,false,false,false
+저PER하지만부진B,KOSPI,소비재,390000000000,4.1,6.8,5.1,0.48,145,3,1.7,0.52,1.4,low,false,weak,weak,low,false,false,false,false,false,false,false,false,false
+고ROE성장주C,KOSDAQ,IT,1200000000000,11.4,22.1,16.2,2.2,52,18,8.3,1.18,0.8,medium,false,medium,medium,medium,true,false,false,false,false,true,false,true,true</textarea>
           </div>
 
           <div class="button-row">

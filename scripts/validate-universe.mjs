@@ -74,6 +74,10 @@ function countFilled(rows, field) {
   return rows.filter((row) => String(row[field] ?? "").trim() !== "").length;
 }
 
+function countAnyFilled(rows, fields) {
+  return rows.filter((row) => fields.some((field) => String(row[field] ?? "").trim() !== "")).length;
+}
+
 function ensureHeaders(headers, requiredHeaders, modeLabel) {
   const missing = requiredHeaders.filter((header) => !headers.includes(header));
   if (missing.length > 0) {
@@ -157,13 +161,14 @@ async function main() {
 
   const marketCount = countFilled(rows, "market");
   const sectorCount = countFilled(rows, "sector");
+  const shareholderCoverage = countAnyFilled(rows, ["shareholderReturn", "dividendYield"]);
   const lowCompletenessCount = rows.filter((row) => {
     const completeness = Number(row.completeness ?? "");
     return Number.isFinite(completeness) && completeness < LOW_COMPLETENESS_THRESHOLD;
   }).length;
 
   console.log(
-    `검증 완료: ${mode} / rows=${rows.length} / market=${marketCount} / sector=${sectorCount} / ${logCoverage(rows, ["roe", "debtRatio", "opMargin"])}${mode === "enriched" ? ` / ${logCoverage(rows, ["per", "pbr", "marketCap", "dividendYield"])}` : ""}${lowCompletenessCount ? ` / completeness<${LOW_COMPLETENESS_THRESHOLD}=${lowCompletenessCount}` : ""}`,
+    `검증 완료: ${mode} / rows=${rows.length} / market=${marketCount} / sector=${sectorCount} / ${logCoverage(rows, ["roe", "roic", "debtRatio", "opMargin", "interestCoverage", "ocfToNetIncome"])}${mode === "enriched" ? ` / ${logCoverage(rows, ["per", "pbr", "marketCap", "dividendYield"])} / shareholderSignals=${shareholderCoverage}` : ""}${lowCompletenessCount ? ` / completeness<${LOW_COMPLETENESS_THRESHOLD}=${lowCompletenessCount}` : ""}`,
   );
 }
 
