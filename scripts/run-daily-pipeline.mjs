@@ -33,9 +33,28 @@ function runNode(script, args) {
   });
 }
 
+function runStage(label, script, args) {
+  console.log(`[pipeline] ${label} 시작`);
+  try {
+    runNode(script, args);
+    console.log(`[pipeline] ${label} 완료`);
+  } catch (error) {
+    console.error(`[pipeline] ${label} 실패`, {
+      script,
+      args,
+      message: error.message,
+      status: error.status ?? null,
+    });
+    throw error;
+  }
+}
+
 async function main() {
-  runNode("./scripts/build-dart-universe.mjs", [String(year), String(limit)]);
-  runNode("./scripts/validate-universe.mjs", [dartOutput, "latest"]);
+  runStage("OpenDART 유니버스 생성", "./scripts/build-dart-universe.mjs", [
+    String(year),
+    String(limit),
+  ]);
+  runStage("OpenDART 유니버스 검증", "./scripts/validate-universe.mjs", [dartOutput, "latest"]);
 
   const hasBasic = await exists("./data/krx-basic.csv");
   const hasValuation = await exists("./data/krx-valuation.csv");
@@ -43,14 +62,29 @@ async function main() {
 
   let reportInput = dartOutput;
   if (hasBasic && hasValuation && hasMarketCap) {
-    runNode("./scripts/merge-krx-exports.mjs", [
+    runStage("KRX 기본정보 검증", "./scripts/validate-universe.mjs", [
+      "./data/krx-basic.csv",
+      "krx-basic",
+    ]);
+    runStage("KRX 밸류에이션 검증", "./scripts/validate-universe.mjs", [
+      "./data/krx-valuation.csv",
+      "krx-valuation",
+    ]);
+    runStage("KRX 시가총액 검증", "./scripts/validate-universe.mjs", [
+      "./data/krx-marketcap.csv",
+      "krx-marketcap",
+    ]);
+    runStage("KRX 병합", "./scripts/merge-krx-exports.mjs", [
       dartOutput,
       "./data/krx-basic.csv",
       "./data/krx-valuation.csv",
       "./data/krx-marketcap.csv",
       enrichedOutput,
     ]);
-    runNode("./scripts/validate-universe.mjs", [enrichedOutput, "enriched"]);
+    runStage("Enriched 유니버스 검증", "./scripts/validate-universe.mjs", [
+      enrichedOutput,
+      "enriched",
+    ]);
     reportInput = enrichedOutput;
     console.log("KRX valuation/marketcap CSV를 함께 사용해 universe.enriched.csv를 생성합니다.");
   } else {
@@ -64,7 +98,7 @@ async function main() {
     );
   }
 
-  runNode("./scripts/generate-daily-report.mjs", [
+  runStage("일간 리포트 생성", "./scripts/generate-daily-report.mjs", [
     reportInput,
     reportOutput,
     minScore,

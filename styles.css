@@ -139,6 +139,16 @@ h1 {
   font-size: 0.82rem;
 }
 
+.badge-neutral {
+  background: rgba(29, 122, 106, 0.1);
+  color: var(--accent);
+}
+
+.badge-warning {
+  background: rgba(179, 80, 34, 0.12);
+  color: #9a4c24;
+}
+
 .principle-item p {
   margin: 0;
   color: var(--muted);
@@ -290,6 +300,18 @@ button:hover {
   border: 1px solid rgba(13, 107, 95, 0.16);
 }
 
+.short-card-warning {
+  background: linear-gradient(180deg, rgba(179, 80, 34, 0.12), rgba(255, 255, 255, 0.82));
+  border-color: rgba(179, 80, 34, 0.18);
+}
+
+.short-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .short-rank {
   color: var(--accent);
   font-size: 0.8rem;
@@ -316,6 +338,11 @@ button:hover {
   border: 1px solid rgba(94, 73, 53, 0.1);
 }
 
+.stock-card-warning {
+  border-color: rgba(179, 80, 34, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(179, 80, 34, 0.06);
+}
+
 .stock-card-header {
   display: flex;
   align-items: flex-start;
@@ -329,9 +356,26 @@ button:hover {
 }
 
 .meta {
-  margin-top: 6px;
   color: var(--muted);
   font-size: 0.93rem;
+}
+
+.title-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.completeness-warning {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(179, 80, 34, 0.08);
+  color: #7c4020;
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .score-pill {

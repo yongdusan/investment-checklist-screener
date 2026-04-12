@@ -13,6 +13,7 @@ const confidenceFilter = document.querySelector("#must-have-confidence");
 const topNFilter = document.querySelector("#top-n");
 const universeUrl = document.querySelector("#universe-url");
 const csvFileInput = document.querySelector("#csv-file");
+const LOW_COMPLETENESS_THRESHOLD = 60;
 
 function renderPrinciples() {
   principleList.replaceChildren(
@@ -159,27 +160,60 @@ function createReasonList(reasons) {
   return list;
 }
 
+function isLowCompleteness(stock) {
+  return Number(stock.completeness) < LOW_COMPLETENESS_THRESHOLD;
+}
+
+function createCompletenessBadge(stock) {
+  const badge = document.createElement("span");
+  badge.className = `badge ${isLowCompleteness(stock) ? "badge-warning" : "badge-neutral"}`;
+  badge.textContent = isLowCompleteness(stock)
+    ? `정보 부족 ${stock.completeness}%`
+    : `정보 충실도 ${stock.completeness}%`;
+  return badge;
+}
+
 function createShortCard(stock, index) {
   const article = document.createElement("article");
   article.className = "short-card";
+  if (isLowCompleteness(stock)) {
+    article.classList.add("short-card-warning");
+  }
+
+  const topRow = document.createElement("div");
+  topRow.className = "short-card-top";
 
   const rank = document.createElement("div");
   rank.className = "short-rank";
   rank.textContent = `Top ${index + 1}`;
 
+  topRow.append(rank, createCompletenessBadge(stock));
+
   const title = document.createElement("h3");
   title.textContent = `${stock.name || "이름 없음"} · ${stock.score}점`;
 
   const summaryLine = document.createElement("p");
-  summaryLine.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} / 정보 충실도 ${stock.completeness}% / 촉매 ${stock.catalyst || "미입력"}`;
+  summaryLine.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} / 촉매 ${stock.catalyst || "미입력"}`;
 
-  article.append(rank, title, summaryLine);
+  article.append(topRow, title, summaryLine);
+
+  if (isLowCompleteness(stock)) {
+    const warning = document.createElement("p");
+    warning.className = "completeness-warning";
+    warning.textContent =
+      "실데이터가 60% 미만입니다. 점수 해석 전에 누락된 재무 항목과 수동 오버레이를 먼저 확인하세요.";
+    article.append(warning);
+  }
+
   return article;
 }
 
 function createStockCard(stock) {
   const article = document.createElement("article");
   article.className = "stock-card";
+  if (isLowCompleteness(stock)) {
+    article.classList.add("stock-card-warning");
+  }
 
   const header = document.createElement("div");
   header.className = "stock-card-header";
@@ -190,8 +224,13 @@ function createStockCard(stock) {
 
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} · 정보 충실도 ${stock.completeness}% · 확신도 ${stock.confidence || "미입력"}`;
-  titleWrap.append(title, meta);
+  meta.textContent = `${stock.market || "시장 미기재"} · ${stock.sector || "섹터 미기재"} · 확신도 ${stock.confidence || "미입력"}`;
+
+  const titleMetaRow = document.createElement("div");
+  titleMetaRow.className = "title-meta-row";
+  titleMetaRow.append(meta, createCompletenessBadge(stock));
+
+  titleWrap.append(title, titleMetaRow);
 
   const score = document.createElement("div");
   score.className = `score-pill ${scoreClass(stock.score)}`.trim();
@@ -223,7 +262,17 @@ function createStockCard(stock) {
 
   breakdownBlock.append(breakdownTitle, breakdownList);
 
-  article.append(header, metrics, createReasonList(stock.reasons), breakdownBlock);
+  article.append(header);
+
+  if (isLowCompleteness(stock)) {
+    const warning = document.createElement("p");
+    warning.className = "completeness-warning";
+    warning.textContent =
+      "이 종목은 정보 충실도가 낮아 점수 신뢰도가 제한적입니다. 비어 있는 재무 항목을 먼저 확인하세요.";
+    article.append(warning);
+  }
+
+  article.append(metrics, createReasonList(stock.reasons), breakdownBlock);
   return article;
 }
 
@@ -271,8 +320,10 @@ function renderResults() {
   const filtered = stocks.filter(passesFilters);
   const topN = Number(topNFilter.value);
   const shortlisted = filtered.slice(0, topN);
+  const lowCompletenessCount = filtered.filter(isLowCompleteness).length;
+  const shortlistedLowCompletenessCount = shortlisted.filter(isLowCompleteness).length;
 
-  summary.textContent = `전체 ${stocks.length}개 중 ${filtered.length}개가 현재 필터를 통과했고, 그중 상위 ${shortlisted.length}개를 우선 후보로 보여줍니다. 점수는 입력된 정보 범위 안에서 계산한 적합도이며, 정보 충실도도 함께 확인하는 편이 좋습니다.`;
+  summary.textContent = `전체 ${stocks.length}개 중 ${filtered.length}개가 현재 필터를 통과했고, 그중 상위 ${shortlisted.length}개를 우선 후보로 보여줍니다. 점수는 입력된 정보 범위 안에서 계산한 적합도이며, 정보 충실도도 함께 확인하는 편이 좋습니다.${lowCompletenessCount > 0 ? ` 현재 필터 통과 종목 중 ${lowCompletenessCount}개, 상위 후보 중 ${shortlistedLowCompletenessCount}개는 정보 충실도 ${LOW_COMPLETENESS_THRESHOLD}% 미만입니다.` : ""}`;
 
   if (filtered.length === 0) {
     shortlist.replaceChildren();

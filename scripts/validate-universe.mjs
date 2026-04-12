@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readKrxCsv } from "../lib/krx-csv.mjs";
 
 const inputPath = resolve(process.argv[2] || "./data/universe.latest.csv");
 const mode = process.argv[3] || "latest";
+const LOW_COMPLETENESS_THRESHOLD = 60;
 
 function parseCsv(text) {
   const rows = [];
@@ -79,8 +81,21 @@ function ensureHeaders(headers, requiredHeaders, modeLabel) {
   }
 }
 
+function ensureAnyHeader(headers, candidates, modeLabel, label) {
+  if (!candidates.some((header) => headers.includes(header))) {
+    throw new Error(`${modeLabel} CSV에 ${label} 헤더가 없습니다. 후보: ${candidates.join(", ")}`);
+  }
+}
+
+function logCoverage(rows, fields) {
+  return fields
+    .map((field) => `${field}=${countFilled(rows, field)}`)
+    .join(" / ");
+}
+
 async function main() {
-  const text = await readFile(inputPath, "utf8");
+  const text =
+    mode.startsWith("krx-") ? await readKrxCsv(inputPath) : await readFile(inputPath, "utf8");
   const { headers, rows } = parseCsv(text);
 
   if (rows.length === 0) {
@@ -89,6 +104,41 @@ async function main() {
 
   const latestRequired = ["name", "stockCode", "market", "sector", "roe", "debtRatio", "opMargin"];
   const enrichedRequired = [...latestRequired, "per", "pbr", "marketCap", "dividendYield"];
+
+  if (mode === "krx-basic") {
+    ensureAnyHeader(headers, ["종목코드", "단축코드", "표준코드", "종목 코드"], mode, "종목코드");
+    ensureAnyHeader(headers, ["종목명", "한글 종목명", "회사명"], mode, "종목명");
+    ensureAnyHeader(headers, ["시장구분", "시장", "소속시장", "시장 구분"], mode, "시장");
+    ensureAnyHeader(headers, ["업종", "업종명", "소속부", "증권구분"], mode, "업종");
+    console.log(`검증 완료: ${mode} / rows=${rows.length}`);
+    return;
+  }
+
+  if (mode === "krx-valuation") {
+    ensureAnyHeader(headers, ["종목코드", "단축코드", "표준코드"], mode, "종목코드");
+    ensureAnyHeader(headers, ["PER", "주가수익비율"], mode, "PER");
+    ensureAnyHeader(headers, ["PBR", "주가순자산비율"], mode, "PBR");
+    console.log(`검증 완료: ${mode} / rows=${rows.length}`);
+    return;
+  }
+
+  if (mode === "krx-marketcap") {
+    ensureAnyHeader(headers, ["종목코드", "단축코드", "표준코드"], mode, "종목코드");
+    ensureAnyHeader(
+      headers,
+      [
+        "시가총액",
+        "상장시가총액",
+        "자기주식제외시가총액",
+        "자기주식 제외 시가총액(A*B)",
+        "자기주식 제외 시가총액",
+      ],
+      mode,
+      "시가총액",
+    );
+    console.log(`검증 완료: ${mode} / rows=${rows.length}`);
+    return;
+  }
 
   if (mode === "enriched") {
     ensureHeaders(headers, enrichedRequired, "enriched");
@@ -107,9 +157,13 @@ async function main() {
 
   const marketCount = countFilled(rows, "market");
   const sectorCount = countFilled(rows, "sector");
+  const lowCompletenessCount = rows.filter((row) => {
+    const completeness = Number(row.completeness ?? "");
+    return Number.isFinite(completeness) && completeness < LOW_COMPLETENESS_THRESHOLD;
+  }).length;
 
   console.log(
-    `검증 완료: ${mode} / rows=${rows.length} / market=${marketCount} / sector=${sectorCount}`,
+    `검증 완료: ${mode} / rows=${rows.length} / market=${marketCount} / sector=${sectorCount} / ${logCoverage(rows, ["roe", "debtRatio", "opMargin"])}${mode === "enriched" ? ` / ${logCoverage(rows, ["per", "pbr", "marketCap", "dividendYield"])}` : ""}${lowCompletenessCount ? ` / completeness<${LOW_COMPLETENESS_THRESHOLD}=${lowCompletenessCount}` : ""}`,
   );
 }
 
