@@ -6,10 +6,16 @@ import { readKrxCsv } from "../lib/krx-csv.mjs";
 
 const API_KEY = process.env.OPENDART_API_KEY || process.env.DART_API_KEY;
 const YEAR = Number(process.argv[2] || new Date().getFullYear() - 1);
-const LIMIT = process.argv[3] ? Number(process.argv[3]) : null;
-const OUTPUT = resolve(process.argv[4] || "./data/universe.latest.csv");
+const OUTPUT = resolve(process.argv[3] || "./data/universe.latest.csv");
 const KRX_BASIC_PATH = resolve(process.env.KRX_BASIC_PATH || "./data/krx-basic.csv");
+const KRX_VALUATION_PATH = resolve(process.env.KRX_VALUATION_PATH || "./data/krx-valuation.csv");
+const KRX_MARKETCAP_PATH = resolve(process.env.KRX_MARKETCAP_PATH || "./data/krx-marketcap.csv");
 const REPORT_CODES = ["11011", "11014", "11012", "11013"];
+
+// Stage 1 필터 파라미터
+const STAGE1_MIN_MARKETCAP = 50000000000;   // 시가총액 500억원 이상
+const STAGE1_MAX_PBR = 2.0;                 // PBR 2.0 이하 (명백한 고평가 제외)
+const STAGE1_MAX_API_CALLS = 300;           // API 호출 상한 (GitHub Actions 타임아웃 대비)
 const CONCURRENCY = 4;
 const FETCH_RETRIES = 2;
 const FETCH_RETRY_BASE_DELAY_MS = 300;
@@ -147,35 +153,100 @@ function parseCorpXml(xmlText) {
 }
 
 async function loadKrxSelection() {
-  try {
-    const csvText = await readKrxCsv(KRX_BASIC_PATH);
-    const rows = parseCsv(csvText);
-    const selected = rows
-      .map((row) => {
-        const stockCode = normalizeCode(
-          row["종목코드"] || row["단축코드"] || row["표준코드"] || row["종목 코드"],
-        );
-        const market =
-          row["시장구분"] || row["시장"] || row["소속시장"] || row["시장 구분"] || "";
-        const name = row["종목명"] || row["한글 종목명"] || row["회사명"] || "";
-        const sector =
-          row["업종"] || row["업종명"] || row["소속부"] || row["증권구분"] || "";
-        return { stockCode, market, name, sector };
-      })
-      .filter(
-        (row) => row.stockCode && ["KOSPI", "KOSDAQ"].some((market) => String(row.market).toUpperCase().startsWith(market)),
-      );
-
-    if (!selected.length) {
-      throw new Error(`KRX 기본정보 CSV에서 KOSPI/KOSDAQ 종목을 찾지 못했습니다: ${KRX_BASIC_PATH}`);
-    }
-
-    return LIMIT ? selected.slice(0, LIMIT) : selected;
-  } catch (error) {
-    throw new Error(
-      `KRX 기본정보 CSV 처리 실패: ${error.message}`,
+  // --- Basic: 종목코드 / 시장 / 업종 ---
+  const basicText = await readKrxCsv(KRX_BASIC_PATH).catch(() => null);
+  if (!basicText) throw new Error(`KRX 기본정보 CSV를 읽지 못했습니다: ${KRX_BASIC_PATH}`);
+  const basicRows = parseCsv(basicText);
+  const basicMap = new Map();
+  for (const row of basicRows) {
+    const stockCode = normalizeCode(
+      row["종목코드"] || row["단축코드"] || row["표준코드"] || row["종목 코드"],
     );
+    if (!stockCode) continue;
+    const market = row["시장구분"] || row["시장"] || row["소속시장"] || row["시장 구분"] || "";
+    const isKospiKosdaq = ["KOSPI", "KOSDAQ"].some((m) => String(market).toUpperCase().startsWith(m));
+    if (!isKospiKosdaq) continue;
+    basicMap.set(stockCode, {
+      stockCode,
+      market,
+      name: row["종목명"] || row["한글 종목명"] || row["회사명"] || "",
+      sector: row["업종"] || row["업종명"] || row["소속부"] || row["증권구분"] || "",
+    });
   }
+
+  if (!basicMap.size) throw new Error(`KRX 기본정보 CSV에서 KOSPI/KOSDAQ 종목을 찾지 못했습니다: ${KRX_BASIC_PATH}`);
+  logStep(`Stage 1 - KRX 기본정보 로드: ${basicMap.size}개 KOSPI/KOSDAQ 종목`);
+
+  // --- MarketCap: 시가총액 ---
+  const marketCapText = await readKrxCsv(KRX_MARKETCAP_PATH).catch(() => null);
+  const marketCapMap = new Map();
+  if (marketCapText) {
+    for (const row of parseCsv(marketCapText)) {
+      const stockCode = normalizeCode(row["종목코드"] || row["단축코드"] || row["표준코드"]);
+      if (!stockCode) continue;
+      const cap = toNumber(
+        row["시가총액"] || row["상장시가총액"] ||
+        row["자기주식제외시가총액"] || row["자기주식 제외 시가총액(A*B)"] ||
+        row["자기주식 제외 시가총액"],
+      );
+      if (cap !== null) marketCapMap.set(stockCode, cap);
+    }
+    logStep(`Stage 1 - KRX 시가총액 로드: ${marketCapMap.size}개`);
+  } else {
+    logStep(`Stage 1 - krx-marketcap.csv 없음, 시가총액 필터 미적용`);
+  }
+
+  // --- Valuation: PBR ---
+  const valuationText = await readKrxCsv(KRX_VALUATION_PATH).catch(() => null);
+  const pbrMap = new Map();
+  if (valuationText) {
+    for (const row of parseCsv(valuationText)) {
+      const stockCode = normalizeCode(row["종목코드"] || row["단축코드"] || row["표준코드"]);
+      if (!stockCode) continue;
+      const pbr = toNumber(row["PBR"] || row["주가순자산비율"]);
+      if (pbr !== null) pbrMap.set(stockCode, pbr);
+    }
+    logStep(`Stage 1 - KRX 밸류에이션 로드: ${pbrMap.size}개`);
+  } else {
+    logStep(`Stage 1 - krx-valuation.csv 없음, PBR 필터 미적용`);
+  }
+
+  // --- Stage 1 필터 적용 ---
+  let candidates = [...basicMap.values()];
+  const beforeCount = candidates.length;
+
+  // 시가총액 하한 필터 (데이터 있는 경우만)
+  if (marketCapMap.size > 0) {
+    candidates = candidates.filter((row) => {
+      const cap = marketCapMap.get(row.stockCode);
+      return cap === undefined || cap >= STAGE1_MIN_MARKETCAP;
+    });
+    logStep(`Stage 1 - 시가총액 ${Math.round(STAGE1_MIN_MARKETCAP / 100000000)}억원 이상 필터: ${beforeCount}개 → ${candidates.length}개`);
+  }
+
+  const afterMarketCap = candidates.length;
+
+  // PBR 상한 필터 (데이터 있는 경우만)
+  if (pbrMap.size > 0) {
+    candidates = candidates.filter((row) => {
+      const pbr = pbrMap.get(row.stockCode);
+      return pbr === undefined || pbr <= STAGE1_MAX_PBR;
+    });
+    logStep(`Stage 1 - PBR ${STAGE1_MAX_PBR} 이하 필터: ${afterMarketCap}개 → ${candidates.length}개`);
+  }
+
+  // 시가총액 내림차순 정렬 후 API 호출 상한 적용
+  if (marketCapMap.size > 0) {
+    candidates.sort((a, b) => {
+      const capA = marketCapMap.get(a.stockCode) ?? 0;
+      const capB = marketCapMap.get(b.stockCode) ?? 0;
+      return capB - capA;
+    });
+  }
+
+  const selected = candidates.slice(0, STAGE1_MAX_API_CALLS);
+  logStep(`Stage 1 완료: 최종 API 조회 대상 ${selected.length}개 (상한 ${STAGE1_MAX_API_CALLS}개)`);
+  return selected;
 }
 
 function pickMetric(items, aliases) {
@@ -609,11 +680,7 @@ async function mapWithConcurrency(items, worker) {
 }
 
 async function main() {
-  logStep(
-    `OpenDART 유니버스를 불러오는 중... 기준연도 ${YEAR}, 조회 대상 ${
-      LIMIT ? `최대 ${LIMIT}개` : "전체 상장사"
-    }`,
-  );
+  logStep(`OpenDART 유니버스를 불러오는 중... 기준연도 ${YEAR}`);
   const universe = await fetchCorpUniverse();
   const krxSelection = await loadKrxSelection();
   const corpByCode = new Map(universe.map((corp) => [normalizeCode(corp.stockCode), corp]));

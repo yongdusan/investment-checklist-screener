@@ -12,7 +12,7 @@ concurrency:
 jobs:
   refresh-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: write
 
@@ -30,7 +30,6 @@ jobs:
       - name: Refresh universe and report
         env:
           OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
-          REPORT_LIMIT: "100"
         run: node ./scripts/run-daily-pipeline.mjs
 
       - name: Commit refreshed data
