@@ -148,7 +148,9 @@ async function loadKrxSelection() {
         const market =
           row["시장구분"] || row["시장"] || row["소속시장"] || row["시장 구분"] || "";
         const name = row["종목명"] || row["한글 종목명"] || row["회사명"] || "";
-        return { stockCode, market, name };
+        const sector =
+          row["업종"] || row["업종명"] || row["소속부"] || row["증권구분"] || "";
+        return { stockCode, market, name, sector };
       })
       .filter(
         (row) => row.stockCode && ["KOSPI", "KOSDAQ"].some((market) => String(row.market).toUpperCase().startsWith(market)),
@@ -191,12 +193,17 @@ function pickAccountAmount(items, sjDiv, aliases, field = "thstrm_amount") {
     return rank(a.fs_div) - rank(b.fs_div);
   });
 
-  const matched = sorted.find((item) => {
+  const exactMatched = sorted.find((item) => {
     const accountName = normalizeAccountName(item.account_nm);
-    return normalizedAliases.some(
-      (alias) => accountName === alias || accountName.includes(alias),
-    );
+    return normalizedAliases.some((alias) => accountName === alias);
   });
+
+  const matched =
+    exactMatched ||
+    sorted.find((item) => {
+      const accountName = normalizeAccountName(item.account_nm);
+      return normalizedAliases.some((alias) => accountName.includes(alias));
+    });
 
   if (!matched) {
     return null;
@@ -206,9 +213,9 @@ function pickAccountAmount(items, sjDiv, aliases, field = "thstrm_amount") {
 }
 
 function computeIndicators(accountList) {
-  const equity = pickAccountAmount(accountList, "BS", ["자본총계", "자본"]);
-  const previousEquity = pickAccountAmount(accountList, "BS", ["자본총계", "자본"], "frmtrm_amount");
-  const liabilities = pickAccountAmount(accountList, "BS", ["부채총계", "부채"]);
+  const equity = pickAccountAmount(accountList, "BS", ["자본총계"]);
+  const previousEquity = pickAccountAmount(accountList, "BS", ["자본총계"], "frmtrm_amount");
+  const liabilities = pickAccountAmount(accountList, "BS", ["부채총계"]);
   const revenue =
     pickAccountAmount(accountList, "IS", ["매출액"], "thstrm_add_amount") ??
     pickAccountAmount(accountList, "IS", ["영업수익"], "thstrm_add_amount");
@@ -374,10 +381,11 @@ async function fetchIndicators(corp) {
       }
 
       return {
-        name: corp.corpName,
+        name: corp.name || corp.corpName,
         stockCode: corp.stockCode,
         corpCode: corp.corpCode,
-        sector: "",
+        market: corp.market || "",
+        sector: corp.sector || "",
         per: "",
         roe,
         pbr: "",
@@ -427,7 +435,10 @@ async function main() {
   const krxSelection = await loadKrxSelection();
   const corpByCode = new Map(universe.map((corp) => [normalizeCode(corp.stockCode), corp]));
   const selected = krxSelection
-    .map((row) => corpByCode.get(row.stockCode))
+    .map((row) => {
+      const corp = corpByCode.get(row.stockCode);
+      return corp ? { ...corp, ...row } : null;
+    })
     .filter(Boolean);
 
   console.log(
@@ -470,6 +481,7 @@ async function main() {
     "name",
     "stockCode",
     "corpCode",
+    "market",
     "sector",
     "per",
     "roe",
